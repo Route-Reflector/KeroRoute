@@ -3,6 +3,7 @@ import cmd2
 
 import ping
 
+import executor
 
 """
 cmd3のコマンドライン引数はすべて文字列型となるため、注意が必要。
@@ -27,6 +28,7 @@ class KeroRoute(cmd2.Cmd):
 
 
 KeroRoute.do_ping = ping.do_ping
+KeroRoute.do_execute = executor.do_execute
 
 
 if __name__ == "__main__":
