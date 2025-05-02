@@ -1,4 +1,6 @@
 import argparse
+import os
+from datetime import datetime
 from netmiko import ConnectHandler
 import cmd2
 
@@ -16,6 +18,7 @@ netmiko_execute_parser.add_argument("-d", "--device_type", type=str, default="ci
 netmiko_execute_parser.add_argument("-P", "--port", type=int, default=22)
 netmiko_execute_parser.add_argument("-t", "--timeout", type=int, default=10)
 netmiko_execute_parser.add_argument("-l", "--log", action="store_true")
+netmiko_execute_parser.add_argument("-m", "--memo", type=str, default="")
 
 
 @cmd2.with_argparser(netmiko_execute_parser)
@@ -32,18 +35,47 @@ def do_execute(self, args):
             "port": args.port,
             "timeout": args.timeout
         }
-    
-        connection = ConnectHandler(**device)
+   
 
+        connection = ConnectHandler(**device)
+        # 将来的にはdevice_typeでCisco以外の他機種にも対応。
+        hostname = connection.find_prompt().strip("#>")
         output = connection.send_command(args.command)
         connection.disconnect()
-        self.poutput("🔗接続成功ケロ🐸")
-        self.poutput(output)
 
-        # ここにログを保存する場合のコードを書く。
+
+        if args.log == True:
+            os.makedirs("logs/execute/", exist_ok=True)
+            timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+
+            sanitized_command = args.command.replace(" ", "-")
+            
+            if args.memo and not args.log:
+                self.poutput("⚠️ --memo は --log が指定されているときだけ有効ケロ🐸")
+
+            if args.memo == "":
+                file_name = f"logs/execute/{timestamp}_{hostname}_{sanitized_command}.log"
+
+            else:
+                file_name = f"logs/execute/{timestamp}_{hostname}_{sanitized_command}_{args.memo}.log"
+
+            with open(file_name, "w") as log_file:
+                log_file.write(output)
+                self.poutput("\033[92m💾ログ保存モードONケロ🐸🔛\033[0m")
+                self.poutput("🔗接続成功ケロ🐸")
+                self.poutput(output)
+                self.poutput(f"\033[96m💾✅ログ保存完了ケロ🐸⏩⏩⏩ {file_name}\033[0m")
+        
+        else:
+            self.poutput("🔗接続成功ケロ🐸")
+            self.poutput(output)
+
+
+
+
 
     except Exception as e:
-        self.poutput("🚥エラー？接続できないケロ。🐸")
+        self.poutput("🚥エラー？接続できないケロ。🐸 {e}")
     
 
 

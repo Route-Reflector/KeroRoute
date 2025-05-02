@@ -1,0 +1,58 @@
+# KeroRoute | Ansible 互換のinventory file
+# "children"はAnsibleとの互換のためそのまま使用しています。
+# 意味としては「ホストグループの定義」です。
+
+
+
+all:
+  hosts:
+    R1:
+      ip: "192.168.10.10"
+      username: "cisco"
+      password: "cisco"
+      device_type: "cisco_ios"
+      port: 22
+      timeout: 10
+      ttl: 64
+      tags: ""
+    R2:
+      ip: "192.168.10.11"
+      username: "cisco"
+      password: "cisco"
+      device_type: "cisco_ios"
+      port: 22
+      timeout: 10
+      ttl: 64
+      tags: "" 
+    R3:
+      ip: "192.168.10.12"
+      username: "cisco"
+      password: "cisco"
+      device_type: "cisco_ios"
+      port: 22
+      timeout: 10
+      ttl: 64
+      tags: ""
+    R4:
+      ip: "192.168.10.13"
+      username: "cisco"
+      password: "cisco"
+      device_type: "cisco_ios"
+      port: 22
+      timeout: 10
+      ttl: 64
+      tags: ""
+
+
+
+  children:
+    cisco_ios:
+      hosts:
+        R1:
+        R2:
+        R3:
+        R4:
+    lab_devices:
+      hosts:
+        R1:
+
