@@ -7,6 +7,8 @@ name = "pypi"
 cmd2 = "*"
 rich = "*"
 netmiko = "*"
+pyaml = "*"
+"ruamel.yaml" = "*"
 
 [dev-packages]
 
