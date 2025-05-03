@@ -1,9 +1,8 @@
-import subprocess, argparse
 import cmd2
 
 import ping
-
 import executor
+from message import print_info, print_success, print_warning, print_error, ask
 
 """
 cmd3のコマンドライン引数はすべて文字列型となるため、注意が必要。
@@ -14,25 +13,19 @@ class KeroRoute(cmd2.Cmd):
     # prompt = "🐸\033[92mKeroRoute> \033[0m"
     prompt = "🐸\033[38;5;190mKeroRoute> \033[0m"
 
-
     def initial_message(self):
         with open("kero-data/kero-logo.txt", "r") as logo_data:
             logo = logo_data.read()
         self.poutput(logo)
 
     def do_exit(self, _):
-        self.poutput("\nKeroRouteを終了するケロ🐸🔚\n")
+        print_info(self.poutput, "KeroRouteを終了するケロ🐸🔚")
         return True 
-          
-
-
 
 KeroRoute.do_ping = ping.do_ping
 KeroRoute.do_execute = executor.do_execute
-
 
 if __name__ == "__main__":
     cli = KeroRoute()
     cli.initial_message()
     cli.cmdloop()
-

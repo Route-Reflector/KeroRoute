@@ -4,6 +4,9 @@ from datetime import datetime
 from netmiko import ConnectHandler
 import cmd2
 
+from message import print_info, print_success, print_warning, print_error, ask
+
+
 
 ######################
 ### PARSER_SECTION ###
@@ -44,15 +47,16 @@ def do_execute(self, args):
         connection.disconnect()
 
 
+        if args.memo and not args.log:
+            print_warning(self.poutput, "--memo は --log が指定されているときだけ有効ケロ🐸")
+        
+
         if args.log == True:
             os.makedirs("logs/execute/", exist_ok=True)
             timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
 
             sanitized_command = args.command.replace(" ", "-")
             
-            if args.memo and not args.log:
-                self.poutput("⚠️ --memo は --log が指定されているときだけ有効ケロ🐸")
-
             if args.memo == "":
                 file_name = f"logs/execute/{timestamp}_{hostname}_{sanitized_command}.log"
 
@@ -60,14 +64,14 @@ def do_execute(self, args):
                 file_name = f"logs/execute/{timestamp}_{hostname}_{sanitized_command}_{args.memo}.log"
 
             with open(file_name, "w") as log_file:
-                log_file.write(output)
-                self.poutput("\033[92m💾ログ保存モードONケロ🐸🔛\033[0m")
-                self.poutput("🔗接続成功ケロ🐸")
+                log_file.write(output + "\n")
+                print_info(self.poutput, "💾ログ保存モードONケロ🐸🔛")
+                print_success(self.poutput, "🔗接続成功ケロ🐸")
                 self.poutput(output)
-                self.poutput(f"\033[96m💾✅ログ保存完了ケロ🐸⏩⏩⏩ {file_name}\033[0m")
+                print_success(self.poutput, f"💾ログ保存完了ケロ🐸⏩⏩⏩ {file_name}")
         
         else:
-            self.poutput("🔗接続成功ケロ🐸")
+            print_success(self.poutput, "🔗接続成功ケロ🐸")
             self.poutput(output)
 
 
@@ -75,7 +79,7 @@ def do_execute(self, args):
 
 
     except Exception as e:
-        self.poutput("🚥エラー？接続できないケロ。🐸 {e}")
+        print_error(self.poutput, f"エラー？接続できないケロ。🐸 \n {e}")
     
 
 
