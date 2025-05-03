@@ -1,6 +1,8 @@
 import subprocess, argparse, ipaddress
 import cmd2
 
+from message import print_info, print_success, print_warning, print_error, ask
+
 
 ######################
 ### PARSER_SECTION ###
@@ -21,38 +23,49 @@ def do_ping(self, args):
     try:
         ipaddress.IPv4Address(args.ip)
     except ipaddress.AddressValueError:
-        self.poutput("IPアドレス間違ってないケロ？🐸")
+        # self.poutput("IPアドレス間違ってないケロ？🐸")
+        print_warning(self.poutput, "IPアドレス間違ってないケロ？🐸")
         return
     
     if args.log:
         #　ここにログを保存する処理。
-        self.poutput("💾ログ保存モードONケロ🐸🔛")
+        # self.poutput("💾ログ保存モードONケロ🐸🔛")
+        print_info(self.poutput, "💾ログ保存モードONケロ🐸🔛")
 
     try:
-        subprocess.run(["ping", args.ip, "-c", str(args.count), "-s", str(args.size), "-t", str(args.ttl)], check=True)
+        # subprocess.run(["ping", args.ip, "-c", str(args.count), "-s", str(args.size), "-t", str(args.ttl)], check=True)
+        result = subprocess.run(["ping", args.ip, "-c", str(args.count), "-s", str(args.size), "-t", str(args.ttl)], check=True)
+        self.poutput(result.stdout)
+
     except subprocess.CalledProcessError:
-        self.poutput("🚨なんか失敗したケロロ.....🐸")
+        # self.poutput("🚨なんか失敗したケロロ.....🐸")
+        print_error(self.poutput, "なんか失敗したケロロ.....🐸")
         return
 
-    self.poutput("Pingの結果を確認するケロ🐸")
+    # self.poutput("Pingの結果を確認するケロ🐸")
+    print_success(self.poutput, "Pingの結果を確認するケロ🐸")
 
 
 def _do_ping_interactive(self) -> None:
 
-    ip: str = input("どのIP/ホストにpingするケロ？🐸")        
+    # ip: str = input("どのIP/ホストにpingするケロ？🐸")        
+    ip: str = ask("どのIP/ホストにpingするケロ？🐸")        
     if ip == "":
-        self.poutput("IPアドレスは必須ケロ！🐸")
+        # self.poutput("IPアドレスは必須ケロ！🐸")
+        print_error(self.poutput, "IPアドレスは必須ケロ！🐸")
         return
     else:
         try:
             ipaddress.IPv4Address(ip)
         except ipaddress.AddressValueError:
-            self.poutput("IPアドレス間違ってないケロ？🐸")
+            # self.poutput("IPアドレス間違ってないケロ？🐸")
+            print_warning(self.poutput, "IPアドレス間違ってないケロ？🐸")
             return
 
 
     # repeatの最大値を決めておく？
-    repeat: int = input("何回送信するケロ？(default = 4)🐸: ")        
+    # repeat: int = input("何回送信するケロ？(default = 4)🐸: ")        
+    repeat: int = ask("何回送信するケロ？(default = 4)🐸: ")        
     if repeat == "":
         repeat = 4
     else:
@@ -60,7 +73,8 @@ def _do_ping_interactive(self) -> None:
     
 
     # pacekt_sizeの最小値と最大値も決めて置く？
-    packet_size: int = input("packetsizeはどうするケロ？(default = 56)🐸: ")
+    # packet_size: int = input("packetsizeはどうするケロ？(default = 56)🐸: ")
+    packet_size: int = ask("packetsizeはどうするケロ？(default = 56)🐸: ")
     if packet_size == "":
         packet_size = 56
     else:
@@ -68,7 +82,8 @@ def _do_ping_interactive(self) -> None:
 
 
     # ttl は0から255の間かな？
-    ttl = input("ttlはどうするケロ？🐸(default = 64): ")        
+    # ttl = input("ttlはどうするケロ？🐸(default = 64): ")        
+    ttl: int = ask("ttlはどうするケロ？🐸(default = 64): ")        
     if ttl == "":
         ttl = 64
     else:
@@ -76,16 +91,23 @@ def _do_ping_interactive(self) -> None:
 
 
     save_log: bool = False    
-    log: str = input("ログは保存するケロ？🐸(yes/no): ")        
+    # log: str = input("ログは保存するケロ？🐸(yes/no): ")        
+    log: str = ask("ログは保存するケロ？🐸(yes/no): ")        
     if log == "":
         log = "no"
 
     if log.lower() == "yes":
         save_log = True
-        self.poutput("💾ログ保存モードONケロ🐸🔛")
-        # ここにログを保存する処理。
+        # TODO: ここにログを保存する処理。
+        # self.poutput("💾ログ保存モードONケロ🐸🔛")
+        print_info(self.poutput, "💾ログ保存モードONケロ🐸🔛")
 
 
-    self.poutput("ping実行中.....🐸💨")                  
-    subprocess.run(["ping", ip, "-c", str(repeat), "-s", str(packet_size), "-t", str(ttl)], check=True)
-    self.poutput("実行終了ケロ。実行結果を確認するケロ🐸🔚")        
+    # self.poutput("ping実行中.....🐸💨")                  
+    print_info(self.poutput, "ping実行中.....🐸💨")                  
+    # subprocess.run(["ping", ip, "-c", str(repeat), "-s", str(packet_size), "-t", str(ttl)], check=True)
+    result =  subprocess.run(["ping", ip, "-c", str(repeat), "-s", str(packet_size), "-t", str(ttl)], check=True)
+    self.poutput(result.stdout)
+
+    # self.poutput("実行終了ケロ。実行結果を確認するケロ🐸🔚")        
+    print_success(self.poutput, "実行終了ケロ。実行結果を確認するケロ🐸🔚")        
