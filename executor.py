@@ -48,7 +48,6 @@ def do_execute(self, args):
 
 
         if args.memo and not args.log:
-            # self.poutput("⚠️ --memo は --log が指定されているときだけ有効ケロ🐸")
             print_warning(self.poutput, "--memo は --log が指定されているときだけ有効ケロ🐸")
         
 
@@ -66,16 +65,12 @@ def do_execute(self, args):
 
             with open(file_name, "w") as log_file:
                 log_file.write(output + "\n")
-                # self.poutput("\033[92m💾ログ保存モードONケロ🐸🔛\033[0m")
                 print_info(self.poutput, "💾ログ保存モードONケロ🐸🔛")
-                # self.poutput("🔗接続成功ケロ🐸")
                 print_success(self.poutput, "🔗接続成功ケロ🐸")
                 self.poutput(output)
-                # self.poutput(f"\033[96m💾✅ログ保存完了ケロ🐸⏩⏩⏩ {file_name}\033[0m")
                 print_success(self.poutput, f"💾ログ保存完了ケロ🐸⏩⏩⏩ {file_name}")
         
         else:
-            # self.poutput("🔗接続成功ケロ🐸")
             print_success(self.poutput, "🔗接続成功ケロ🐸")
             self.poutput(output)
 
@@ -84,7 +79,6 @@ def do_execute(self, args):
 
 
     except Exception as e:
-        # self.poutput("🚥エラー？接続できないケロ。🐸 {e}")
         print_error(self.poutput, f"エラー？接続できないケロ。🐸 \n {e}")
     
 

@@ -19,7 +19,6 @@ class KeroRoute(cmd2.Cmd):
         self.poutput(logo)
 
     def do_exit(self, _):
-        # self.poutput("\nKeroRouteを終了するケロ🐸🔚\n")
         print_info(self.poutput, "KeroRouteを終了するケロ🐸🔚")
         return True 
 
