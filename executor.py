@@ -51,9 +51,8 @@ target_command.add_argument("-c", "--command", type=str, default="")
 target_command.add_argument("-L", "--command-list", type=str, default="")
 
 
-def _execute_on_device(device: dict, coomand: str, args, poutput) -> None:
+def _execute_on_device(device: dict, command: str, args, poutput, hostname_for_log) -> None:
     try:   
-
         connection = ConnectHandler(**device)
         # 将来的にはdevice_typeでCisco以外の他機種にも対応。
         hostname = connection.find_prompt().strip("#>")
@@ -90,11 +89,13 @@ def _execute_on_device(device: dict, coomand: str, args, poutput) -> None:
 
 
     except Exception as e:
-        print_error(poutput, f"エラー？接続できないケロ。🐸 \n {e}")
+        print_error(poutput, f"[{hostname_for_log}]エラー？接続できないケロ。🐸 \n {e}")
 
 
 @cmd2.with_argparser(netmiko_execute_parser)
 def do_execute(self, args):
+
+    yaml = YAML()
 
     if args.ip:
         device = {
@@ -106,18 +107,25 @@ def do_execute(self, args):
             "timeout": args.timeout
         }
 
+        hostname_for_log = args.ip
+
         if args.command:
-            _execute_on_device(device, args.command, args, self.poutput)
+            _execute_on_device(device, args.command, args, self.poutput, hostname_for_log)
         elif args.command_list:
-            # _execute_on_device(device, args.command-list, args)
+            # TODO: command-list の複数コマンド実行機能を実装
+            # _execute_on_device(device, args.command-list, args, self.poutput, hostname_for_log)
             pass    
+    
+
     elif args.host:
         # with open でinventory fileを読み取る。
         with open("inventory.yaml", "r") as inventory:
-           yaml = YAML()
-           inventory_data = yaml.load(inventory)
-           node_info = inventory_data["all"]["hosts"][args.host]
-           device = {
+            inventory_data = yaml.load(inventory)
+            if args.host not in inventory_data["all"]["hosts"]:
+                print_error(self.poutput, f"ホスト '{args.host}' はinventory.yamlに存在しないケロ🐸")
+                return        
+            node_info = inventory_data["all"]["hosts"][args.host]
+            device = {
             "device_type": node_info["device_type"],
             "ip": node_info["ip"],
             "username": node_info["username"],
@@ -125,24 +133,40 @@ def do_execute(self, args):
             "port": node_info["port"],
             "timeout": node_info["timeout"] 
            } 
-
+         
+            hostname_for_log = node_info["hostname"]
+            
         if args.command:
-            _execute_on_device(device, args.command, args, self.poutput)
+            _execute_on_device(device, args.command, args, self.poutput, hostname_for_log)
         elif args.command_list:
-            # _execute_on_device(device, args.command-list, args)
+            # TODO: command-list の複数コマンド実行機能を実装
+            # _execute_on_device(device, args.command-list, args, self.poutput, hostname_for_log)
             pass    
 
 
     elif args.group:
-        pass
-        # with open でinventory fileを読み取る。
-        # していされたグループの情報を取得
-        # そのグループののーどのじょうほうを取得。
-        # for loopが必要。
         # 将来的には並列処理を実装。
-    else:
-        pass
-
-
-
-
+        with open("inventory.yaml", "r") as inventory:
+            inventory_data = yaml.load(inventory)
+            if args.group not in inventory_data["all"]["children"]:
+                print_error(self.poutput, f"グループ '{args.group}' はinventory.yamlに存在しないケロ🐸")
+                return        
+            group_info = inventory_data["all"]["children"][f"{args.group}"]["hosts"]
+            
+            for node in group_info:
+                node_info = inventory_data["all"]["hosts"][f"{node}"]
+                device = {
+                    "device_type": node_info["device_type"],
+                    "ip": node_info["ip"],
+                    "username": node_info["username"],
+                    "password": node_info["password"],
+                    "port": node_info["port"],
+                    "timeout": node_info["timeout"] 
+                    } 
+                hostname_for_log = node_info["hostname"]
+                if args.command:
+                    _execute_on_device(device, args.command, args, self.poutput, hostname_for_log)
+                elif args.command_list:
+                    # TODO: command-list の複数コマンド実行機能を実装
+                    # _execute_on_device(device, args.command-list, args, self.poutput, hostname_for_log)
+                    pass    
