@@ -4,3 +4,4 @@ venv/
 *.log
 logs/*.log
 inventory.yaml
+command-list.yaml

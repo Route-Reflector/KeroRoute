@@ -1,0 +1,17 @@
+command_list:
+  cisco_ios:
+    jizen_command:
+      description: "設定前の事前確認に使うコマンド"
+      commands:
+      - terminal length 0
+      - show version
+      - show running-config
+      - show startup-config
+    jigo_command:
+      description: "設定後の状態の保存と事後確認に使うコマンド"
+      commands:
+      - copy running-start startup-config
+      - terminal length 0
+      - show version
+      - show running-config
+      - show startup-config
