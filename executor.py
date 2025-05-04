@@ -55,8 +55,37 @@ def _execute_on_device(device: dict, command: str, args, poutput, hostname_for_l
     try:   
         connection = ConnectHandler(**device)
         # 将来的にはdevice_typeでCisco以外の他機種にも対応。
-        hostname = connection.find_prompt().strip("#>")
-        output = connection.send_command(args.command)
+        node_prompt = connection.find_prompt()
+        hostname = node_prompt.strip("#>")
+
+        yaml = YAML()
+
+        if args.command:
+            output = connection.send_command(args.command)
+            full_output = f"{node_prompt} {args.command}\n{output}"
+        elif args.command_list:
+            with open("command-list.yaml", "r") as file_command_list:
+                command_list_data = yaml.load(file_command_list)
+                if args.device_type not in command_list_data["command_list"]:
+                    print_error(poutput, f"デバイスタイプ '{args.device_type}' はcommand-list.yamlに存在しないケロ🐸")
+                    return
+                if args.command_list not in command_list_data["command_list"][f"{args.device_type}"]:
+                    print_error(poutput, f"コマンドリスト '{args.command_list}' はcommand-list.yamlに存在しないケロ🐸")
+                    return
+
+                try:
+                    exec_commands = command_list_data["command_list"][f"{args.device_type}"][f"{args.command_list}"]["commands"]
+                except KeyError:
+                    print_error(poutput, f"[{hostname_for_log}] command-list.yamlの構造がおかしいケロ🐸")               
+
+
+                full_output_list = []
+
+                for command in exec_commands:
+                    output = connection.send_command(command)
+                    full_output = f"{node_prompt} {command}\n{output}"
+                    full_output_list.append(full_output)
+
         connection.disconnect()
 
 
@@ -68,24 +97,41 @@ def _execute_on_device(device: dict, command: str, args, poutput, hostname_for_l
             os.makedirs("logs/execute/", exist_ok=True)
             timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
 
-            sanitized_command = args.command.replace(" ", "-")
-            
+
+            if args.command:
+                sanitized_command = args.command.replace(" ", "-")
+            elif args.command_list:
+                sanitized_command = args.command_list.replace(" ", "-")
+
             if args.memo == "":
                 file_name = f"logs/execute/{timestamp}_{hostname}_{sanitized_command}.log"
-
             else:
                 file_name = f"logs/execute/{timestamp}_{hostname}_{sanitized_command}_{args.memo}.log"
 
-            with open(file_name, "w") as log_file:
-                log_file.write(output + "\n")
-                print_info(poutput, "💾ログ保存モードONケロ🐸🔛")
-                print_success(poutput, "🔗接続成功ケロ🐸")
-                poutput(output)
-                print_success(poutput, f"💾ログ保存完了ケロ🐸⏩⏩⏩ {file_name}")
-        
+            if args.command:    
+                with open(file_name, "w") as log_file:
+                    log_file.write(full_output + "\n")
+                    print_info(poutput, "💾ログ保存モードONケロ🐸🔛")
+                    print_success(poutput, "🔗接続成功ケロ🐸")
+                    poutput(full_output)
+                    print_success(poutput, f"💾ログ保存完了ケロ🐸⏩⏩⏩ {file_name}")
+
+            elif args.command_list:
+                with open(file_name, "w") as log_file:
+                    log_file.write("\n".join(full_output_list) + "\n")
+                    print_info(poutput, "💾ログ保存モードONケロ🐸🔛")
+                    print_success(poutput, "🔗接続成功ケロ🐸")
+                    poutput("\n".join(full_output_list) + "\n")
+                    print_success(poutput, f"💾ログ保存完了ケロ🐸⏩⏩⏩ {file_name}")
+
+
         else:
-            print_success(poutput, "🔗接続成功ケロ🐸")
-            poutput(output)
+            if args.command:
+                print_success(poutput, "🔗接続成功ケロ🐸")
+                poutput(full_output)
+            elif args.command_list:
+                print_success(poutput, "🔗接続成功ケロ🐸")
+                poutput("\n".join(full_output_list) + "\n")
 
 
     except Exception as e:
@@ -112,13 +158,10 @@ def do_execute(self, args):
         if args.command:
             _execute_on_device(device, args.command, args, self.poutput, hostname_for_log)
         elif args.command_list:
-            # TODO: command-list の複数コマンド実行機能を実装
-            # _execute_on_device(device, args.command-list, args, self.poutput, hostname_for_log)
-            pass    
+            _execute_on_device(device, args.command_list, args, self.poutput, hostname_for_log)
     
 
     elif args.host:
-        # with open でinventory fileを読み取る。
         with open("inventory.yaml", "r") as inventory:
             inventory_data = yaml.load(inventory)
             if args.host not in inventory_data["all"]["hosts"]:
@@ -139,9 +182,7 @@ def do_execute(self, args):
         if args.command:
             _execute_on_device(device, args.command, args, self.poutput, hostname_for_log)
         elif args.command_list:
-            # TODO: command-list の複数コマンド実行機能を実装
-            # _execute_on_device(device, args.command-list, args, self.poutput, hostname_for_log)
-            pass    
+            _execute_on_device(device, args.command_list, args, self.poutput, hostname_for_log)
 
 
     elif args.group:
@@ -167,6 +208,4 @@ def do_execute(self, args):
                 if args.command:
                     _execute_on_device(device, args.command, args, self.poutput, hostname_for_log)
                 elif args.command_list:
-                    # TODO: command-list の複数コマンド実行機能を実装
-                    # _execute_on_device(device, args.command-list, args, self.poutput, hostname_for_log)
-                    pass    
+                    _execute_on_device(device, args.command_list, args, self.poutput, hostname_for_log)
