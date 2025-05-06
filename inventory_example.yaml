@@ -1,12 +1,9 @@
-# KeroRoute | Ansible 互換のinventory file
-# "children"はAnsibleとの互換のためそのまま使用しています。
-# 意味としては「ホストグループの定義」です。
-
-
+# KeroRoute | inventory.yaml（最新版）
 
 all:
   hosts:
     R1:
+      hostname: "R1"
       ip: "192.168.10.10"
       username: "cisco"
       password: "cisco"
@@ -14,8 +11,11 @@ all:
       port: 22
       timeout: 10
       ttl: 64
-      tags: ""
+      tags: ["core", "lab"]
+      description: "東京オフィスのルータ"
+
     R2:
+      hostname: "R2"
       ip: "192.168.10.11"
       username: "cisco"
       password: "cisco"
@@ -23,8 +23,11 @@ all:
       port: 22
       timeout: 10
       ttl: 64
-      tags: "" 
+      tags: ["branch"]
+      description: "大阪支店のルータ"
+
     R3:
+      hostname: "R3"
       ip: "192.168.10.12"
       username: "cisco"
       password: "cisco"
@@ -32,8 +35,11 @@ all:
       port: 22
       timeout: 10
       ttl: 64
-      tags: ""
+      tags: ["backup"]
+      description: "災害対策用のバックアップルータ"
+
     R4:
+      hostname: "R4"
       ip: "192.168.10.13"
       username: "cisco"
       password: "cisco"
@@ -41,18 +47,22 @@ all:
       port: 22
       timeout: 10
       ttl: 64
-      tags: ""
+      tags: ["test"]
+      description: "テスト環境のルータ"
 
-
-
-  children:
+  groups:
     cisco_ios:
+      description: "Cisco IOSデバイスをまとめた標準グループ"
+      tags: ["ios", "production"]
       hosts:
-        R1:
-        R2:
-        R3:
-        R4:
+        - R1
+        - R2
+        - R3
+        - R4
+
     lab_devices:
+      description: "ラボ・検証用機器グループ"
+      tags: ["lab", "testing"]
       hosts:
-        R1:
+        - R1
 

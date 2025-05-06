@@ -154,7 +154,8 @@ def _load_and_validate_inventory(args, poutput):
             print_error(poutput, f"ホスト '{args.host}' はinventory.yamlに存在しないケロ🐸")
             return None
     elif args.group:
-        if args.group not in inventory_data["all"]["children"]:
+        # if args.group not in inventory_data["all"]["children"]:
+        if args.group not in inventory_data["all"]["groups"]:
             print_error(poutput, f"グループ '{args.group}' はinventory.yamlに存在しないケロ🐸")
             return None
     
@@ -192,7 +193,8 @@ def _build_device_and_hostname(args, inventory_data=None):
         return device, hostname_for_log 
 
     elif args.group:
-        group_info = inventory_data["all"]["children"][f"{args.group}"]["hosts"]
+        # group_info = inventory_data["all"]["children"][f"{args.group}"]["hosts"]
+        group_info = inventory_data["all"]["groups"][f"{args.group}"]["hosts"]
         
         device_list = []
         hostname_for_log_list = []
