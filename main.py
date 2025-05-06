@@ -2,6 +2,9 @@ import cmd2
 
 import ping
 import executor
+import show
+
+
 from message import print_info, print_success, print_warning, print_error, ask
 
 """
@@ -24,6 +27,7 @@ class KeroRoute(cmd2.Cmd):
 
 KeroRoute.do_ping = ping.do_ping
 KeroRoute.do_execute = executor.do_execute
+KeroRoute.do_show = show.do_show
 
 if __name__ == "__main__":
     cli = KeroRoute()
