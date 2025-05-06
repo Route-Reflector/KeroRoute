@@ -47,7 +47,7 @@ target_node.add_argument("--group", type=str, nargs="?", default=None)
 
 target_command = netmiko_execute_parser.add_mutually_exclusive_group(required=True)
 target_command.add_argument("-c", "--command", type=str, default="")
-target_command.add_argument("-L", "--command-list", type=str, default="")
+target_command.add_argument("-L", "--commands-list", type=str, default="")
 
 
 def _connect_to_device(device: dict, hostname_for_log:str):
@@ -63,7 +63,7 @@ def _connect_to_device(device: dict, hostname_for_log:str):
         raise ConnectionError(f"[{hostname_for_log}]に接続できないケロ。🐸 \n {e}")
 
 
-def _execute_commands_on_device(connection, node_prompt, hostname_for_log, args, poutput) -> str:
+def _execute_commands_on_device(connection, node_prompt, hostname_for_log, args, poutput, device) -> str:
     
     if args.command:
         output = connection.send_command(args.command)
@@ -71,22 +71,24 @@ def _execute_commands_on_device(connection, node_prompt, hostname_for_log, args,
 
         return full_output
 
-    elif args.command_list:
+    elif args.commands_list:
         yaml = YAML()
-        with open("command-list.yaml", "r") as file_command_list:
-            command_list_data = yaml.load(file_command_list)
+        with open("commands-lists.yaml", "r") as file_commands_lists:
+            commands_lists_data = yaml.load(file_commands_lists)
 
-            if args.device_type not in command_list_data["command_list"]:
-                print_error(poutput, f"デバイスタイプ '{args.device_type}' はcommand-list.yamlに存在しないケロ🐸")
+            device_type = device["device_type"]
+
+            if device_type not in commands_lists_data["commands_lists"]:
+                print_error(poutput, f"デバイスタイプ '{device_type}' はcommands-lists.yamlに存在しないケロ🐸")
                 return
-            if args.command_list not in command_list_data["command_list"][f"{args.device_type}"]:
-                print_error(poutput, f"コマンドリスト '{args.command_list}' はcommand-list.yamlに存在しないケロ🐸")
+            if args.commands_list not in commands_lists_data["commands_lists"][f"{args.device_type}"]:
+                print_error(poutput, f"コマンドリスト '{args.commands_list}' はcommands-lists.yamlに存在しないケロ🐸")
                 return
 
             try:
-                exec_commands = command_list_data["command_list"][f"{args.device_type}"][f"{args.command_list}"]["commands"]
+                exec_commands = commands_lists_data["commands_lists"][f"{device_type}"][f"{args.commands_list}"]["commands_list"]
             except Exception as e:
-                raise KeyError(f"[{hostname_for_log}] command-list.yamlの構造がおかしいケロ🐸")
+                raise KeyError(f"[{hostname_for_log}] commands-lists.yamlの構造がおかしいケロ🐸")
 
             full_output_list = []
 
@@ -107,7 +109,7 @@ def _execute_on_device(device: dict, args, poutput, hostname_for_log) -> None:
         return
 
     try:
-        full_output_or_full_output_list = _execute_commands_on_device(connection, node_prompt, hostname_for_log, args, poutput)
+        full_output_or_full_output_list = _execute_commands_on_device(connection, node_prompt, hostname_for_log, args, poutput, device)
     except KeyError as e:
         print_error(poutput, str(e))
         return
@@ -123,8 +125,8 @@ def _execute_on_device(device: dict, args, poutput, hostname_for_log) -> None:
 
         if args.command:
             sanitized_command = args.command.replace(" ", "-")
-        elif args.command_list:
-            sanitized_command = args.command_list.replace(" ", "-")
+        elif args.commands_list:
+            sanitized_command = args.commands_list.replace(" ", "-")
 
         if args.memo == "":
             file_name = f"logs/execute/{timestamp}_{real_hostname}_{sanitized_command}.log"
@@ -154,7 +156,6 @@ def _load_and_validate_inventory(args, poutput):
             print_error(poutput, f"ホスト '{args.host}' はinventory.yamlに存在しないケロ🐸")
             return None
     elif args.group:
-        # if args.group not in inventory_data["all"]["children"]:
         if args.group not in inventory_data["all"]["groups"]:
             print_error(poutput, f"グループ '{args.group}' はinventory.yamlに存在しないケロ🐸")
             return None
@@ -193,7 +194,6 @@ def _build_device_and_hostname(args, inventory_data=None):
         return device, hostname_for_log 
 
     elif args.group:
-        # group_info = inventory_data["all"]["children"][f"{args.group}"]["hosts"]
         group_info = inventory_data["all"]["groups"][f"{args.group}"]["hosts"]
         
         device_list = []
