@@ -2,6 +2,13 @@ import argparse
 import cmd2
 from ruamel.yaml import YAML
 
+from datetime import datetime
+from pathlib import Path
+
+from rich.console import Console
+from rich.tree import Tree
+from rich.table import Table
+
 
 ######################
 ###  HELP_SECTION  ### 
@@ -23,12 +30,18 @@ logs_help = "保存されているすべてのログファイルの一覧を表�
 log_help = "指定したログファイルの内容を表示します。"
 log_last_help = "最新のログファイルの内容を表示します。"
 
+mode_help = "show --logsで指定するモードです。execute以外のディレクトリを指定する際に使用します。"
+date_help = "show --logs で指定する日付です。YYYY-MM-DDで記載します。"
+
 
 ######################
 ### PARSER_SECTION ###
 ######################
 show_parser = argparse.ArgumentParser(formatter_class=argparse.RawTextHelpFormatter)
 # "-h" はhelpと競合するから使えない。
+
+show_parser.add_argument("-m", "--mode", type=str, default="execute", help=mode_help)
+show_parser.add_argument("-d", "--date", type=str, default="", help=date_help)
 
 # mutually exclusive
 target_show = show_parser.add_mutually_exclusive_group(required=True)
@@ -210,6 +223,51 @@ def _show_commands_list(poutput, device_type, commands_list):
             poutput(f"{i}. {line}")
 
 
+def _show_logs(poutput, args):
+
+    console = Console()
+    today_str = datetime.now().strftime("%Y%m%d")
+
+    if args.mode == "execute":
+        log_mode_dir = Path("logs") / args.mode
+    elif True: # 将来的に別のモードが必要になったときに実装予定。
+        pass
+
+    today_dir = log_mode_dir / today_str
+
+    if args.logs:
+        if args.mode == "execute":
+            # 今日だけは必ずTree表示。
+            num_logs_today = len(list(today_dir.glob("*.log")))
+            today_tree = Tree(str(today_dir))
+            for log_file in sorted(today_dir.glob("*.log")):
+                today_tree.add(log_file.name)
+            console.print(f"📂 {today_dir}/ :{num_logs_today}件のログファイルがあるケロ🐸\n")
+            console.print(today_tree)            
+            console.print("\n")            
+
+            # 他の日付はファイル数でTree表示。
+            for date_dir in sorted(log_mode_dir.glob("*")):
+                if date_dir == today_dir:
+                    continue
+                
+                num_logs = len(list(date_dir.glob("*.log")))
+                if num_logs == 0:
+                    console.print(f"📂 {date_dir.name}/ : ログファイルは存在しないケロ🐸\n")
+                elif num_logs <= 5: # magic_number
+                    tree = Tree(f"{log_mode_dir}/{date_dir.name}")
+                    for log_file in sorted(date_dir.glob("*.log")):
+                        tree.add(log_file.name)
+                    console.print(f"📂 {log_mode_dir}/{date_dir.name}/ :{num_logs}件のログファイルがあるケロ🐸\n")
+                    console.print(tree)
+                    console.print("\n")
+                else:
+                    console.print(f"📂 {log_mode_dir}/{date_dir.name}/ :{num_logs}件のログファイルがあるケロ🐸\n")
+                    console.print(f"ファイル数が多いから省略するケロ🐸\n")
+
+
+
+
 @cmd2.with_argparser(show_parser)
 def do_show(self, args):
     if args.hosts:
@@ -225,4 +283,6 @@ def do_show(self, args):
     elif args.commands_list:
         device_type, commands_list = args.commands_list
         _show_commands_list(self.poutput, device_type, commands_list)
+    elif args.logs:
+        _show_logs(self.poutput, args)
 

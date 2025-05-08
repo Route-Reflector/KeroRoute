@@ -151,7 +151,7 @@ def _execute_on_device(device: dict, args, poutput, hostname_for_log) -> None:
         print_warning(poutput, "--memo は --log が指定されているときだけ有効ケロ🐸")
     
     if args.log == True:
-        date_str = datetime.now().strftime("%Y-%m-%d")
+        date_str = datetime.now().strftime("%Y%m%d")
         log_dir = Path("logs") / "execute" / date_str
         log_dir.mkdir(parents=True, exist_ok=True)
         timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
