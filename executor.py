@@ -1,6 +1,6 @@
 import argparse
-import os
 from datetime import datetime
+from pathlib import Path
 from netmiko import ConnectHandler
 import cmd2
 from ruamel.yaml import YAML
@@ -10,44 +10,51 @@ from message import print_info, print_success, print_warning, print_error, ask
 ######################
 ###  HELP_SECTION  ### 
 ######################
-ip_help = ""
-host_help = ""
-group_help = ""
+ip_help = "対象デバイスのIPアドレスを指定します。"
+host_help = "inventory.yamlに定義されたホスト名を指定します。"
+group_help = "inventory.yamlに定義されたグループ名を指定します。グループ内の全ホストにコマンドを実行します。"
 
-command_help = ""
-command_list_help = ""
+command_help = "1つのコマンドを直接指定して実行します。"
+command_list_help = "コマンドリスト名（commands-lists.yamlに定義）を指定して実行します。" \
+                    "device_typeはホストから自動で選択されます。"
 
-username_help = ""
-password_help = ""
-device_type_help = ""
-port_help = ""
-timeout_help = ""
-log_help = ""
-memo_help = ""
+username_help = "SSH接続に使用するユーザー名を指定します。省略時はinventory.yamlの値を使用します。"
+password_help = "SSH接続に使用するパスワードを指定します。省略時はinventory.yamlの値を使用します。"
+device_type_help = "Netmikoにおけるデバイスタイプを指定します（例: cisco_ios）。省略時は 'cisco_ios' です。"
+port_help = "SSH接続に使用するポート番号を指定します（デフォルト: 22）"
+timeout_help = "SSH接続のタイムアウト秒数を指定します（デフォルト: 10秒）"
+log_help = ("実行結果をログファイルとして保存します。\n"
+           "保存先: logs/execute/\n"
+           "保存名: yearmmdd-hhmmss_[hostname]_[commands_or_commands_list]\n"
+           "example: 20250504-235734_R0_show-ip-int-brief.log")
+memo_help = ("ログファイル名に付加する任意のメモ（文字列）を指定します。\n"
+             "保存先: logs/execute/\n"
+             "保存名: yearmmdd-hhmmss_[hostname]_[commands_or_commands_list]_[memo]\n"
+             "example 20250506-125600_R0_show-ip-int-brief_memo.log")
 
 
 ######################
 ### PARSER_SECTION ###
 ######################
-netmiko_execute_parser = argparse.ArgumentParser()
+netmiko_execute_parser = argparse.ArgumentParser(formatter_class=argparse.RawTextHelpFormatter)
 # "-h" はhelpと競合するから使えない。
-netmiko_execute_parser.add_argument("-u", "--username", type=str, default="")
-netmiko_execute_parser.add_argument("-p", "--password", type=str, default="")
-netmiko_execute_parser.add_argument("-d", "--device_type", type=str, default="cisco_ios")
-netmiko_execute_parser.add_argument("-P", "--port", type=int, default=22)
-netmiko_execute_parser.add_argument("-t", "--timeout", type=int, default=10)
-netmiko_execute_parser.add_argument("-l", "--log", action="store_true")
-netmiko_execute_parser.add_argument("-m", "--memo", type=str, default="")
+netmiko_execute_parser.add_argument("-u", "--username", type=str, default="", help=username_help)
+netmiko_execute_parser.add_argument("-p", "--password", type=str, default="", help=password_help)
+netmiko_execute_parser.add_argument("-d", "--device_type", type=str, default="cisco_ios", help=device_type_help)
+netmiko_execute_parser.add_argument("-P", "--port", type=int, default=22, help=port_help)
+netmiko_execute_parser.add_argument("-t", "--timeout", type=int, default=10, help=timeout_help)
+netmiko_execute_parser.add_argument("-l", "--log", action="store_true", help=log_help)
+netmiko_execute_parser.add_argument("-m", "--memo", type=str, default="", help=memo_help)
 
 # mutually exclusive
 target_node = netmiko_execute_parser.add_mutually_exclusive_group(required=True)
-target_node.add_argument("-i", "--ip", type=str, nargs="?", default=None)
-target_node.add_argument("--host", type=str, nargs="?", default=None)
-target_node.add_argument("--group", type=str, nargs="?", default=None)
+target_node.add_argument("-i", "--ip", type=str, nargs="?", default=None, help=ip_help)
+target_node.add_argument("--host", type=str, nargs="?", default=None, help=host_help)
+target_node.add_argument("--group", type=str, nargs="?", default=None, help=group_help)
 
 target_command = netmiko_execute_parser.add_mutually_exclusive_group(required=True)
-target_command.add_argument("-c", "--command", type=str, default="")
-target_command.add_argument("-L", "--commands-list", type=str, default="")
+target_command.add_argument("-c", "--command", type=str, default="", help=command_help)
+target_command.add_argument("-L", "--commands-list", type=str, default="", help=command_list_help)
 
 
 def _connect_to_device(device: dict, hostname_for_log:str):
@@ -72,18 +79,22 @@ def _execute_commands_on_device(connection, node_prompt, hostname_for_log, args,
         return full_output
 
     elif args.commands_list:
+        commands_lists_path = Path("commands-lists.yaml")
+        if not commands_lists_path.exists():
+            raise FileNotFoundError("commands-lists.yamlが見つからないケロ🐸")
+
         yaml = YAML()
-        with open("commands-lists.yaml", "r") as file_commands_lists:
+        with open(commands_lists_path, "r") as file_commands_lists:
             commands_lists_data = yaml.load(file_commands_lists)
 
             device_type = device["device_type"]
 
             if device_type not in commands_lists_data["commands_lists"]:
                 print_error(poutput, f"デバイスタイプ '{device_type}' はcommands-lists.yamlに存在しないケロ🐸")
-                return
+                return "" # エラー時には空文字列を返す。
             if args.commands_list not in commands_lists_data["commands_lists"][f"{args.device_type}"]:
                 print_error(poutput, f"コマンドリスト '{args.commands_list}' はcommands-lists.yamlに存在しないケロ🐸")
-                return
+                return "" # エラー時には空文字列を返す。
 
             try:
                 exec_commands = commands_lists_data["commands_lists"][f"{device_type}"][f"{args.commands_list}"]["commands_list"]
@@ -101,6 +112,26 @@ def _execute_commands_on_device(connection, node_prompt, hostname_for_log, args,
 
 
 def _execute_on_device(device: dict, args, poutput, hostname_for_log) -> None:
+
+ # ✅ commands-listが指定されている場合は先に存在チェック
+    if args.commands_list:
+        commands_lists_path = Path("commands-lists.yaml")
+        if not commands_lists_path.exists():
+            print_error(poutput, "commands-lists.yaml が見つからないケロ🐸")
+            return
+
+        yaml = YAML()
+        with commands_lists_path.open("r") as f:
+            data = yaml.load(f)
+
+        device_type = device["device_type"]
+        if device_type not in data["commands_lists"]:
+            print_error(poutput, f"デバイスタイプ '{device_type}' はcommands-lists.yamlに存在しないケロ🐸")
+            return
+
+        if args.commands_list not in data["commands_lists"][device_type]:
+            print_error(poutput, f"コマンドリスト '{args.commands_list}' はcommands-lists.yamlに存在しないケロ🐸")
+            return
 
     try:
         connection, node_prompt, real_hostname = _connect_to_device(device, hostname_for_log)
@@ -120,25 +151,31 @@ def _execute_on_device(device: dict, args, poutput, hostname_for_log) -> None:
         print_warning(poutput, "--memo は --log が指定されているときだけ有効ケロ🐸")
     
     if args.log == True:
-        os.makedirs("logs/execute/", exist_ok=True)
+        date_str = datetime.now().strftime("%Y-%m-%d")
+        log_dir = Path("logs") / "execute" / date_str
+        log_dir.mkdir(parents=True, exist_ok=True)
         timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
 
         if args.command:
             sanitized_command = args.command.replace(" ", "-")
         elif args.commands_list:
             sanitized_command = args.commands_list.replace(" ", "-")
+        else:
+            raise ValueError("args.command または args.commands_list のどちらかが必須ケロ！🐸")
 
         if args.memo == "":
-            file_name = f"logs/execute/{timestamp}_{real_hostname}_{sanitized_command}.log"
+            file_name = f"{timestamp}_{real_hostname}_{sanitized_command}.log"
         else:
-            file_name = f"logs/execute/{timestamp}_{real_hostname}_{sanitized_command}_{args.memo}.log"
+            file_name = f"{timestamp}_{real_hostname}_{sanitized_command}_{args.memo}.log"
+        
+        log_path = log_dir / file_name
 
-        with open(file_name, "w") as log_file:
+        with open(log_path, "w") as log_file:
             log_file.write(full_output_or_full_output_list)
             print_info(poutput, "💾ログ保存モードONケロ🐸🔛")
             print_success(poutput, "🔗接続成功ケロ🐸")
             poutput(full_output_or_full_output_list)
-            print_success(poutput, f"💾ログ保存完了ケロ🐸⏩⏩⏩ {file_name}")
+            print_success(poutput, f"💾ログ保存完了ケロ🐸⏩⏩⏩ {log_path}")
 
     else:
         print_success(poutput, "🔗接続成功ケロ🐸")
@@ -146,9 +183,13 @@ def _execute_on_device(device: dict, args, poutput, hostname_for_log) -> None:
 
 
 def _load_and_validate_inventory(args, poutput):
-    
+
+    inventory_path = Path("inventory.yaml")
+    if not inventory_path.exists():
+        raise FileNotFoundError("inventory.yamlが存在しないケロ🐸")
+
     yaml = YAML()
-    with open("inventory.yaml", "r") as inventory:
+    with open(inventory_path, "r") as inventory:
         inventory_data = yaml.load(inventory)
 
     if args.host:

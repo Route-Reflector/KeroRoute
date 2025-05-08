@@ -6,28 +6,28 @@ from ruamel.yaml import YAML
 ######################
 ###  HELP_SECTION  ### 
 ######################
-hosts_help = ""
-host_help = ""
+hosts_help = "すべてのホストの一覧を表示します。"
+host_help = "指定したホスト（hostname）の詳細情報を表示します。"
 
-groups_help = ""
-group_help = ""
+groups_help = "すべてのグループの一覧を表示します。"
+group_help = "指定したグループのメンバー情報と詳細を表示します。"
 
-commands_lists_help = ""
+commands_lists_help = "すべてのコマンドリストの一覧を表示します。"
 commands_list_help = (
-    "コマンドリストの内容を表示します。"
+    "コマンドリストの内容を表示します。\n"
     "2つの引数（DEVICE_TYPE と COMMAND_LIST）を指定してください。\n"
-    "例: show --commands cisco_ios jizen_command"
+    "例: show --commands-list cisco_ios jizen_command\n"
 )
 
-logs_help = ""
-log_help = ""
-log_last_help = ""
+logs_help = "保存されているすべてのログファイルの一覧を表示します。"
+log_help = "指定したログファイルの内容を表示します。"
+log_last_help = "最新のログファイルの内容を表示します。"
 
 
 ######################
 ### PARSER_SECTION ###
 ######################
-show_parser = argparse.ArgumentParser()
+show_parser = argparse.ArgumentParser(formatter_class=argparse.RawTextHelpFormatter)
 # "-h" はhelpと競合するから使えない。
 
 # mutually exclusive
