@@ -6,3 +6,4 @@ logs/*.log
 inventory.yaml
 commands-lists.yaml
 .vscode/
+tmp/*

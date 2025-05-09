@@ -9,7 +9,13 @@ from rich.console import Console
 from rich.tree import Tree
 from rich.table import Table
 
+import difflib
+
+import shutil
 import subprocess
+
+import webbrowser
+import time
 
 from message import print_info, print_success, print_warning, print_error, ask
 
@@ -37,6 +43,11 @@ log_last_help = "最新のログファイルの内容を表示します。"
 mode_help = "show --log(s)で指定するモードです。execute以外のディレクトリを指定する際に使用します。"
 date_help = "show --logs で指定する日付です。YYYY-MM-DDで記載します。"
 
+diff_help= "--diff で比較する2つのログファイルを指定するケロ🐸"
+style_help = "差分表示のスタイルを選べるケロ🐸\n" \
+                  "unified（標準）, side-by-side, html から選べるケロ"
+keep_html_help = "HTMLファイルを削除せずに残すケロ🐸"
+
 
 ######################
 ### PARSER_SECTION ###
@@ -46,6 +57,9 @@ show_parser = argparse.ArgumentParser(formatter_class=argparse.RawTextHelpFormat
 
 show_parser.add_argument("-m", "--mode", type=str, default="execute", help=mode_help)
 show_parser.add_argument("-d", "--date", type=str, default="", help=date_help)
+show_parser.add_argument("--style", type=str, default="unified", choices=["unified", "side-by-side", "html"], help=style_help)
+show_parser.add_argument("--keep-html", action="store_true", help=keep_html_help)
+
 
 # mutually exclusive
 target_show = show_parser.add_mutually_exclusive_group(required=True)
@@ -58,6 +72,7 @@ target_show.add_argument("--commands-list", nargs=2, metavar=("DEVICE_TYPE", "CO
 target_show.add_argument("--logs", action="store_true", help=logs_help)
 target_show.add_argument("--log", type=str, default="execute", help=log_help)
 target_show.add_argument("--log-last", action="store_true", help=log_last_help)
+target_show.add_argument("--diff", nargs=2, metavar=("OLD_LOG", "NEW_LOG"), help=diff_help)
 
 
 def _show_hosts(poutput):
@@ -234,8 +249,8 @@ def _show_logs(poutput, args):
 
     if args.mode == "execute":
         log_mode_dir = Path("logs") / args.mode
-    elif True: # 将来的に別のモードが必要になったときに実装予定。
-        pass
+    else: # 将来的に別のモードが必要になったときに実装予定。
+        raise NotImplementedError(f"モード '{args.mode}' はまだ未対応ケロ🐸")
 
     today_dir = log_mode_dir / today_str
 
@@ -324,9 +339,80 @@ def _show_log(poutput, args):
             # 将来的に実装
 
 
+def _show_diff(poutput, args):
+
+    style = args.style
+
+    mode_dir = Path("logs") /args.mode
+    log1_path = mode_dir / args.diff[0][:8] / args.diff[0]
+    log2_path = mode_dir / args.diff[1][:8] / args.diff[1]
+    
+    if not log1_path.exists():
+        print_error(poutput, f"{log1_path} が存在しないケロ🐸")
+        return
+    if not log2_path.exists():
+        print_error(poutput, f"{log2_path} が存在しないケロ🐸")
+        return
+
+    with open(log1_path, "r") as log_1, open(log2_path, "r") as log_2:
+        text_1= log_1.readlines()
+        text_2= log_2.readlines()
+
+
+
+    if args.mode == "execute":
+        if style == "unified":
+            diff_lines = difflib.unified_diff(text_1, text_2,
+                                                fromfile=args.diff[0],
+                                                tofile=args.diff[1],
+                                                lineterm="")
+            console = Console()
+            if diff_lines:
+                console.print("\n".join(diff_lines))
+            else:
+                console.print("🎉 差分は見つからなかったケロ🐸")
+
+        elif style == "html":
+            # HTML差分ファイルを生成して保存
+            tmp_dir = Path("tmp")
+            tmp_dir.mkdir(exist_ok=True)
+            timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+
+            html_diff = difflib.HtmlDiff().make_file(text_1, text_2, fromdesc=args.diff[0], todesc=args.diff[1])
+            html_path = tmp_dir / f"diff_result_{timestamp}.html"
+
+            with open(html_path, "w") as f:
+                f.write(html_diff)
+
+            try:
+                webbrowser.get("firefox").open(f"file://{html_path.resolve()}")
+                print_success(poutput, f"🦊 HTML差分ファイルをFirefoxで開いたケロ！: {html_path}")
+            except webbrowser.Error:
+                print_warning(poutput, "🚨 Firefoxが見つからなかったケロ！手動で開いてケロ🐸")            
+        
+            if not args.keep_html:
+                # 数秒待ってから削除（確実にブラウザが開いたあと）
+                time.sleep(3)
+                html_path.unlink()
+                print_info(poutput, "🧹 一時HTMLファイルは削除したケロ🐸")
+            else:
+                print_info(poutput, f"💾 一時HTMLファイルを保持したケロ🐸: {html_path}")
+
+
+        elif style == "side-by-side":
+            diff_command = "colordiff" if shutil.which("colordiff") else "diff"
+            subprocess.run([diff_command, "-y", str(log1_path), str(log2_path)])
+
+    else:
+        print_error(poutput, f"未対応のモードケロ🐸: {args.mode}")
+
+
+
 @cmd2.with_argparser(show_parser)
 def do_show(self, args):
-    if args.hosts:
+    if args.diff:
+        _show_diff(self.poutput, args)
+    elif args.hosts:
         _show_hosts(self.poutput)
     elif args.host:
         _show_host(self.poutput, args.host)
