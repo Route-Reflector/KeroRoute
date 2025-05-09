@@ -9,6 +9,8 @@ from rich.console import Console
 from rich.tree import Tree
 from rich.table import Table
 
+import subprocess
+
 from message import print_info, print_success, print_warning, print_error, ask
 
 
@@ -29,10 +31,10 @@ commands_list_help = (
 )
 
 logs_help = "保存されているすべてのログファイルの一覧を表示します。"
-log_help = "指定したログファイルの内容を表示します。"
+log_help = "--logで表示するログファイルを指定します。(例: 20250508/filename.log)"
 log_last_help = "最新のログファイルの内容を表示します。"
 
-mode_help = "show --logsで指定するモードです。execute以外のディレクトリを指定する際に使用します。"
+mode_help = "show --log(s)で指定するモードです。execute以外のディレクトリを指定する際に使用します。"
 date_help = "show --logs で指定する日付です。YYYY-MM-DDで記載します。"
 
 
@@ -54,7 +56,7 @@ target_show.add_argument("--group", type=str, default="", help=group_help)
 target_show.add_argument("--commands-lists", action="store_true", help=commands_lists_help)
 target_show.add_argument("--commands-list", nargs=2, metavar=("DEVICE_TYPE", "COMMAND_LIST"), help=commands_list_help)
 target_show.add_argument("--logs", action="store_true", help=logs_help)
-target_show.add_argument("--log", type=str, default="", help=log_help)
+target_show.add_argument("--log", type=str, default="execute", help=log_help)
 target_show.add_argument("--log-last", action="store_true", help=log_last_help)
 
 
@@ -295,7 +297,31 @@ def _show_logs(poutput, args):
                         console.print(f"ファイル数が多いから省略するケロ🐸\n")
 
 
+def _show_log(poutput, args):
+    if args.log:
+        if args.mode == "execute":
+            mode_dir = Path("logs") / args.mode  # e.g., logs/execute/
+            target_dir = args.log[:8] # logファイルの最初の8文字を取得。
+            log_path = mode_dir / target_dir / args.log       # e.g., logs/execute/20250508/filename.log
 
+            if not log_path.exists():
+                print_error(poutput, f"{log_path} が存在しないケロ🐸")
+                return
+
+            with open(log_path, "r") as f:
+                content = f.read()
+                # console = Console(force_terminal=True)
+                # console.pager(content) # richのpagerがうまく機能しない。
+            
+            try:
+                subprocess.run(["less", "-R"], input=content.encode(), check=True)
+            except Exception as e:
+                print_error(poutput, "less での表示に失敗したケロ🐸")
+                print_error(poutput, str(e))
+
+        else:
+            print_error(poutput, f"未対応のモードケロ🐸: {args.mode}")
+            # 将来的に実装
 
 
 @cmd2.with_argparser(show_parser)
@@ -315,4 +341,6 @@ def do_show(self, args):
         _show_commands_list(self.poutput, device_type, commands_list)
     elif args.logs:
         _show_logs(self.poutput, args)
+    elif args.log:
+        _show_log(self.poutput, args)
 
