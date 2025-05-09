@@ -9,6 +9,8 @@ from rich.console import Console
 from rich.tree import Tree
 from rich.table import Table
 
+from message import print_info, print_success, print_warning, print_error, ask
+
 
 ######################
 ###  HELP_SECTION  ### 
@@ -235,35 +237,63 @@ def _show_logs(poutput, args):
 
     today_dir = log_mode_dir / today_str
 
+# 2週間以上前のログはログは表示しない機能。
+# 先月のログは一つにまとめる機能。do_archiveとか？
+# KeroRoute全体の設定ファイルが必要かも。ログの表示件数とか。
+
     if args.logs:
         if args.mode == "execute":
-            # 今日だけは必ずTree表示。
-            num_logs_today = len(list(today_dir.glob("*.log")))
-            today_tree = Tree(str(today_dir))
-            for log_file in sorted(today_dir.glob("*.log")):
-                today_tree.add(log_file.name)
-            console.print(f"📂 {today_dir}/ :{num_logs_today}件のログファイルがあるケロ🐸\n")
-            console.print(today_tree)            
-            console.print("\n")            
+            if args.date:
+                date_str = args.date
+                date_dir = log_mode_dir / date_str
+                log_dir_list = list(log_mode_dir.glob("*"))
+                is_exists_directory = False
+                # 特定の日付だけログを表示
+                for dir in log_dir_list:
+                    if dir.name == date_str:
+                        is_exists_directory = True
+                        # 一致するならTree表示。
+                        num_logs = len(list(date_dir.glob("*.log")))
+                        date_tree = Tree(str(date_dir))
+                        for log_file in sorted(date_dir.glob("*.log")):
+                            date_tree.add(log_file.name)
+                        console.print(f"📂 {date_dir}/ :{num_logs}件のログファイルがあるケロ🐸\n")
+                        console.print(date_tree)
+                        console.print("\n")
+                        return
 
-            # 他の日付はファイル数でTree表示。
-            for date_dir in sorted(log_mode_dir.glob("*")):
-                if date_dir == today_dir:
-                    continue
-                
-                num_logs = len(list(date_dir.glob("*.log")))
-                if num_logs == 0:
-                    console.print(f"📂 {date_dir.name}/ : ログファイルは存在しないケロ🐸\n")
-                elif num_logs <= 5: # magic_number
-                    tree = Tree(f"{log_mode_dir}/{date_dir.name}")
-                    for log_file in sorted(date_dir.glob("*.log")):
-                        tree.add(log_file.name)
-                    console.print(f"📂 {log_mode_dir}/{date_dir.name}/ :{num_logs}件のログファイルがあるケロ🐸\n")
-                    console.print(tree)
-                    console.print("\n")
-                else:
-                    console.print(f"📂 {log_mode_dir}/{date_dir.name}/ :{num_logs}件のログファイルがあるケロ🐸\n")
-                    console.print(f"ファイル数が多いから省略するケロ🐸\n")
+                if is_exists_directory == False:
+                    console.print(f"📂 {args.date} に対応するログディレクトリは存在しないケロ🐸")
+
+            else:
+                # 今日のログをTree表示。その他の日はフアイル数でTree or Summary
+                num_logs_today = len(list(today_dir.glob("*.log")))
+                today_tree = Tree(str(today_dir))
+                for log_file in sorted(today_dir.glob("*.log")):
+                    today_tree.add(log_file.name)
+                console.print(f"📂 {today_dir}/ :{num_logs_today}件のログファイルがあるケロ🐸\n")
+                console.print(today_tree)            
+                console.print("\n")            
+
+                # 他の日付はファイル数でTree表示。
+                for date_dir in sorted(log_mode_dir.glob("*")):
+                    if date_dir == today_dir:
+                        continue
+                    
+                    num_logs = len(list(date_dir.glob("*.log")))
+                    if num_logs == 0:
+                        console.print(f"📂 {date_dir.name}/ : ログファイルは存在しないケロ🐸\n")
+                    elif num_logs <= 5: # magic_number
+                        tree = Tree(f"{log_mode_dir}/{date_dir.name}")
+                        for log_file in sorted(date_dir.glob("*.log")):
+                            tree.add(log_file.name)
+                        console.print(f"📂 {log_mode_dir}/{date_dir.name}/ :{num_logs}件のログファイルがあるケロ🐸\n")
+                        console.print(tree)
+                        console.print("\n")
+                    else:
+                        console.print(f"📂 {log_mode_dir}/{date_dir.name}/ :{num_logs}件のログファイルがあるケロ🐸\n")
+                        console.print(f"ファイル数が多いから省略するケロ🐸\n")
+
 
 
 
