@@ -5,6 +5,7 @@ from netmiko import ConnectHandler
 import cmd2
 from ruamel.yaml import YAML
 from message import print_info, print_success, print_warning, print_error, ask
+from utils import sanitize_filename_for_log
 
 
 ######################
@@ -157,16 +158,17 @@ def _execute_on_device(device: dict, args, poutput, hostname_for_log) -> None:
         timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
 
         if args.command:
-            sanitized_command = args.command.replace(" ", "-")
+            sanitized_command = sanitize_filename_for_log(args.command)
         elif args.commands_list:
-            sanitized_command = args.commands_list.replace(" ", "-")
+            sanitized_command = sanitize_filename_for_log(args.commands_list)
         else:
             raise ValueError("args.command または args.commands_list のどちらかが必須ケロ！🐸")
 
         if args.memo == "":
             file_name = f"{timestamp}_{real_hostname}_{sanitized_command}.log"
         else:
-            file_name = f"{timestamp}_{real_hostname}_{sanitized_command}_{args.memo}.log"
+            sanitized_memo = sanitize_filename_for_log(args.memo)
+            file_name = f"{timestamp}_{real_hostname}_{sanitized_command}_{sanitized_memo}.log"
         
         log_path = log_dir / file_name
 
