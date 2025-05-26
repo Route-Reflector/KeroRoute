@@ -8,6 +8,9 @@ from pathlib import Path
 from rich.console import Console
 from rich.tree import Tree
 from rich.table import Table
+from rich import box
+from rich.panel import Panel
+from rich.text import Text
 
 import difflib
 
@@ -18,6 +21,9 @@ import webbrowser
 import time
 
 from message import print_info, print_success, print_warning, print_error, ask
+from utils import get_table_theme, get_panel_theme, load_sys_config
+
+import copy
 
 
 ######################
@@ -82,28 +88,29 @@ def _show_hosts(poutput):
     with open("inventory.yaml", "r") as host_list:
         host_list_data = yaml.load(host_list) 
         node_list = host_list_data["all"]["hosts"]
-
-    header = (
-        f'{"HOSTNAME":<15} | '
-        f'{"IP":<15} | '
-        f'{"TYPE":<15} | '
-        f'{"DESCRIPTION":<30} | '
-        f'{"TAGS":<20}'
-        )
     
-    poutput(header)
-    poutput("-" * len(header))
+    table_theme = get_table_theme()
 
+    table = Table(title="🐸 SHOW_HOSTS 🐸", **table_theme)
+
+    header = ["HOSTNAME", "IP", "TYPE", "DESCRIPTION", "TAGS"]
+
+    for _ in header:
+        table.add_column(_)
+    
     for node in node_list:
-        table_output = (
-            f'{node_list[node]["hostname"]:<15} | '
-            f'{node_list[node]["ip"]:<15} | '
-            f'{node_list[node]["device_type"]:<15} | '
-            f'{node_list[node]["description"]:<30} | '
-            f'{", ".join(node_list[node]["tags"]):<20}'
-            )
-        poutput(table_output)
-
+        table_output = [
+            f'{node_list[node]["hostname"]}', 
+            f'{node_list[node]["ip"]}',
+            f'{node_list[node]["device_type"]}',
+            f'{node_list[node]["description"]}',
+            f'{", ".join(node_list[node]["tags"])}'
+        ]
+        table.add_row(*table_output)
+    
+    console = Console()
+    console.print(table)
+    
 
 def _show_host(poutput, node):
     
@@ -113,23 +120,31 @@ def _show_host(poutput, node):
         node_list = host_list_data["all"]["hosts"]
 
 
+        table_theme = get_table_theme()
+
+        table = Table(title="🐸 SHOW_HOST 🐸", **table_theme)
+
+        header = ["Hostname", "IP Address", "Device Type", "Description", "Username", "Password", "Tags", "Port", "Timeout", "TTL"]
+
+        for _ in header:
+            table.add_column(_)
 
         table_output = (
-            f'{"IP Address: ":<15}{node_list[node]["ip"]:<15}\n'
-            f'{"Device Type: ":<15}{node_list[node]["device_type"]:<15}\n'
-            f'{"Description: ":<30}{node_list[node]["description"]:<30}\n'
-            f'{"Username: ":<30}{node_list[node]["username"]:<30}\n'
-            f'{"Password: ":<30}{node_list[node]["password"]:<30}\n'
-            f'{"Tags: ":<20}{", ".join(node_list[node]["tags"]):<20}\n'
-            f'{"Port: ":<20}{node_list[node]["port"]:<20}\n'
-            f'{"Timeout: ":<20}{node_list[node]["timeout"]:<20}\n'
-            f'{"TTL: ":<20}{node_list[node]["ttl"]:<20}\n'
+            f'{node_list[node]["hostname"]}',
+            f'{node_list[node]["ip"]}',
+            f'{node_list[node]["device_type"]}',
+            f'{node_list[node]["description"]}',
+            f'{node_list[node]["username"]}',
+            f'{node_list[node]["password"]}',
+            f'{", ".join(node_list[node]["tags"])}',
+            f'{node_list[node]["port"]}',
+            f'{node_list[node]["timeout"]}',
+            f'{node_list[node]["ttl"]}'
             )
+        table.add_row(*table_output)
 
-        poutput(f'{"Host: ":<15}{node_list[node]["hostname"]:<15}')
-        poutput("-" * 50)
-        poutput(table_output)
-
+        console = Console()
+        console.print(table)
 
 
 def _show_groups(poutput):
@@ -138,19 +153,23 @@ def _show_groups(poutput):
     with open("inventory.yaml", "r") as inventory:
         inventory_data = yaml.load(inventory) 
         groups_list = inventory_data["all"]["groups"]
+    
+    table_theme = get_table_theme()
 
-    header = (
-        f'{"GROUP":<15} | '
-        f'{"DESCRIPTION":<40} | '
-        f'{"TAGS":<20}'
-    )
-    poutput(header)
-    poutput("-" * len(header))
+    table = Table(title="🐸 SHOW_GROUPS 🐸", **table_theme)
+
+    header = ["GROUP", "DESCRIPTION", "TAGS"]
+
+    for _ in header:
+        table.add_column(_)
 
     for group in groups_list:
         group_desc = groups_list[group]["description"]
         group_tags = ", ".join(groups_list[group]["tags"])
-        poutput(f'{group:<15} | {group_desc:<40} | {group_tags:<20}')
+        table.add_row(group, group_desc, group_tags)
+    
+    console = Console()
+    console.print(table)
 
 
 def _show_group(poutput, group):
@@ -160,23 +179,23 @@ def _show_group(poutput, group):
         inventory_data = yaml.load(inventory) 
         groups_list = inventory_data["all"]["groups"]
 
-        poutput(f'{"Group: ":<15}{group:<15}')
-        poutput(f'{"Description: ":<15}{groups_list[group]["description"]:<15}')
-        poutput(f'{"Tags: ":<15}{", ".join(groups_list[group]["tags"]):<15}')
-        poutput(f'{"Members: ":<15}{f"{len(groups_list[group]['hosts'])} host(s)":<15}')
+        table_theme = get_table_theme()
+        panel_theme = get_panel_theme()
+
+        panel_body = Text()
+        panel_body.append(f'Group: {group}\n')
+        panel_body.append(f'Description: {groups_list[group]["description"]}\n')
+        panel_body.append(f'Tags: {", ".join(groups_list[group]["tags"])}\n')
+        panel_body.append(f'Members: {len(groups_list[group]["hosts"])} host(s)')
+
+        panel = Panel(panel_body, title="🐸 GROUP INFO 🐸", **panel_theme)
 
 
-        header = (
-            f'{"HOSTNAME":<15} | '
-            f'{"IP":<15} | '
-            f'{"TYPE":<15} | '
-            f'{"DESCRIPTION":<30} | '
-            f'{"TAGS":<20}'
-        )
-    
-        poutput(header)
-        poutput("-" * len(header))
+        table = Table(title="🐸 SHOW_GROUP 🐸", **table_theme)
+        header = ["Hostname", "Ip", "Type", "Description", "Tags"]
 
+        for _ in header:
+            table.add_column(_)
 
         group_hosts = groups_list[group]["hosts"]
 
@@ -184,13 +203,17 @@ def _show_group(poutput, group):
             host_info = inventory_data["all"]["hosts"][host]
 
             table_output = (
-                f'{host_info["hostname"]:<15} | '
-                f'{host_info["ip"]:<15} | '
-                f'{host_info["device_type"]:<15} | '
-                f'{host_info["description"]:<30} | '
-                f'{", ".join(host_info["tags"]):<20}'
+                f'{host_info["hostname"]}',
+                f'{host_info["ip"]}',
+                f'{host_info["device_type"]}',
+                f'{host_info["description"]}',
+                f'{", ".join(host_info["tags"])}'
                 )
-            poutput(table_output)
+            table.add_row(*table_output)
+        
+        console = Console()
+        console.print(panel)
+        console.print(table)
 
 
 def _show_commands_lists(poutput):
@@ -198,15 +221,14 @@ def _show_commands_lists(poutput):
     with open("commands-lists.yaml", "r") as yaml_commands_lists:
         commands_lists = yaml.load(yaml_commands_lists)
 
-    header = (
-        f'{"DEVICE_TYPE":<15} | '
-        f'{"NAME":<15} | '
-        f'{"DESCRIPTION":<40} | '
-        f'{"TAGS":<20}'
-    )
+    table_theme = get_table_theme()
+    
+    table = Table(title="🐸 SHOW_COMMANDS_LISTS 🐸", **table_theme)
 
-    poutput(header)
-    poutput("-" * len(header))
+    header = ["DEVICE_TYPE", "NAME", "DESCRIPTION", "TAGS"]
+
+    for _ in header:
+        table.add_column(_)
 
     command_lists_info = commands_lists["commands_lists"]
 
@@ -214,32 +236,45 @@ def _show_commands_lists(poutput):
         for command_list in command_lists_info[device_type]:
             command_list_info = command_lists_info[device_type][command_list]
 
-            table_output = (
-                f'{device_type:<15} | '
-                f'{command_list:<15} | '
-                f'{command_list_info["description"]:<30} | '
-                f'{", ".join(command_list_info["tags"]):<20}'
-                )
-            poutput(table_output)
+            table_output =[
+                f"{device_type}",
+                f"{command_list}",
+                f'{command_list_info["description"]}',
+                f'{", ".join(command_list_info["tags"])}'
+                ]
+            table.add_row(*table_output)
 
+    console = Console() 
+    console.print(table)
 
 
 def _show_commands_list(poutput, device_type, commands_list):
     yaml = YAML()
     with open("commands-lists.yaml", "r") as yaml_commands_lists:
         commands_lists = yaml.load(yaml_commands_lists)
-
         command_list_info = commands_lists["commands_lists"][device_type][commands_list]
 
-        poutput(f'{"Command List: ":<15}{commands_list:<15}')
-        poutput(f'{"Description: ":<15}{command_list_info["description"]:<15}')
-        poutput(f'{"Device_Type: ":<15}{device_type:<15}')
-        poutput(f'{"Tags: ":<15}{", ".join(command_list_info["tags"]):<15}')
-        poutput(f'{"Lines: ":<15}{f"{len(command_list_info['commands_list'])} line(s)":<15}\n')
+    table_theme = get_table_theme()
+    table = Table(title="🐸 SHOW_COMMANDS_LIST 🐸", **table_theme)
+    header = ["COMMAND LIST", "DESCRIPTION", "DEVICE_TYPE", "LINES", "TAGS"]
+    row_data = [f"{commands_list}", f'{command_list_info["description"]}', f"{device_type}",  f'{len(command_list_info["commands_list"])} line(s)', f'{", ".join(command_list_info["tags"])}']
 
-        poutput(f'{"COMMANDS: ":<15}')
-        for i, line in enumerate(command_list_info["commands_list"]):
-            poutput(f"{i}. {line}")
+    for _ in header:
+        table.add_column(_)
+
+    table.add_row(*row_data)
+
+    panel_body = Text()
+    lines = [f"{i}. {line}" for i, line in enumerate(command_list_info["commands_list"], start=1)] 
+    panel_body.append("\n".join(lines))
+    panel_theme = get_panel_theme()
+    panel = Panel(panel_body, title="🐸 COMMANDS 🐸", **panel_theme)
+
+    console = Console()
+    console.print(table)
+    console.print("\n")
+    console.print(panel)
+
 
 
 def _show_logs(poutput, args):
