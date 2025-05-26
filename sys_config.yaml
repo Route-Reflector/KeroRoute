@@ -1,0 +1,50 @@
+system:
+  version: "1.0.0"
+  prompt_color: "color(190)"  # 🐸プロンプトのカラーコード
+  default_editor: "vim"       # 使用するエディタ（設定編集など）
+  inventory_file_directory: "" # main.pyと同一フォルダの場合は""
+  inventory_file_name: "inventory.yaml"
+  system_config_directory: "" # main.pyと同一フォルダの場合は""
+  system_config_filename: "system_config.yaml"
+
+theme:
+  table:
+    border_style: "color(154)"        # テーブル枠：落ち着いたグリーン
+    header_style: "bold color(255)"   # ヘッダー：白＋太字
+    title_style: "bold color(87)"     # タイトル：明るいCyan
+    box: "DOUBLE"              # ROUNDED / SQUARE / DOUBLE など
+
+  panel:
+    border_style: "color(190)"        # Panel枠線：明るいライムグリーン
+    style: "bold magenta"       # 文章の色
+    title_align: "left"               # タイトル位置：left / center / right
+    expand: false               # パネルの幅を最大にするか
+
+  diff:
+    default_style: "side-by-side"     # side-by-side / unified / html
+    keep_html: false                  # HTML形式保持するか
+    html_viewer: "firefox"            # diffのHTML表示用コマンド
+
+log: # 未使用
+  base_dir: "logs"
+  auto_create_dir: true
+  include_timestamp: true
+  time_format: "%Y-%m-%d %H:%M:%S"
+
+message: # 未使用
+  success_prefix: "💯[SUCCESS]"
+  warning_prefix: "🟡[WARNING]"
+  error_prefix: "❌[ERROR]"
+  info_prefix: "🪧[INFO]"
+  enable_emoji: true
+
+show: # 未使用
+  table_max_width: 100
+  truncate_tags: true
+  default_sort: "hostname"
+
+execute: # 未使用
+  default_timeout: 10
+  retry_count: 2
+  default_log: true
+
