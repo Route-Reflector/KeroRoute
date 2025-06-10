@@ -11,7 +11,7 @@ commands_lists:
     jigo_command:
       description: "設定後の状態の保存と事後確認に使うコマンド"
       commands_list:
-      - copy running-start startup-config
+      - copy running-config startup-config
       - terminal length 0
       - show version
       - show running-config
