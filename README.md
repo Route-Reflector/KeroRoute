@@ -28,12 +28,36 @@ ciscoルータで作業する感覚で、pyatsやansible等のnetwork automation
 **ONLY on Linux !!**
 現状linuxのみをサポートしています。windowsの場合はwsl2やgit editorを利用してください。
 
+## Python Version
+Tested on Python 3.11
+(Pipfile で固定、python_version = "3.11")
 
+### Minimal Runtime Only
 ```bash
 git clone https://github.com/Route-Reflector/KeroRoute.git
 cd KeroRoute
 pip install -r requirements.txt
 python main.py
+```
+
+### Full development setup
+```bash
+# runtime + dev tools
+pip install -r requirements.txt -r requirements-dev.txt
+
+# or with Pipenv
+pipenv install --dev
+pipenv shell
+
+# run tests & lint
+pytest
+ruff check .
+```
+
+### Generating requirements.txt (for maintainers)
+```bash
+pipenv requirements          > requirements.txt
+pipenv requirements --dev    > requirements-dev.txt
 ```
 ---
 
