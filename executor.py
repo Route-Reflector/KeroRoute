@@ -93,7 +93,7 @@ def _execute_commands_on_device(connection, node_prompt, hostname_for_log, args,
             if device_type not in commands_lists_data["commands_lists"]:
                 print_error(poutput, f"デバイスタイプ '{device_type}' はcommands-lists.yamlに存在しないケロ🐸")
                 return "" # エラー時には空文字列を返す。
-            if args.commands_list not in commands_lists_data["commands_lists"][f"{args.device_type}"]:
+            if args.commands_list not in commands_lists_data["commands_lists"][device_type]:
                 print_error(poutput, f"コマンドリスト '{args.commands_list}' はcommands-lists.yamlに存在しないケロ🐸")
                 return "" # エラー時には空文字列を返す。
 
