@@ -157,6 +157,7 @@ version x.0
   コマンド実行完了時に通知(サウンド、トースト通知、Slack連携など)
 
 
-## ライセンス | license
+## ライセンス | License
 
-MIT License（予定）
+This project is licensed under the MIT License – see the [LICENSE](./LICENSE) file for details.
+このプロジェクトはMIT License で提供されています。
