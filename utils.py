@@ -27,7 +27,8 @@ def sanitize_filename_for_log(text: str) -> str:
 
 
 def is_valid_ip(ip: str) -> bool:
-    """IPv4アドレス形式かを判定する（今後--ip用などに）"""
+    """IP アドレスが正しい形式か確認する。"""
+    """将来的に IPv4アドレス形式かを判定する（今後--ip用などに）"""
     try:
         ipaddress.ip_address(ip)
         return True
