@@ -14,12 +14,11 @@ python-gnupg = "*"
 [dev-packages]
 flake8 = "*"
 mypy = "*"
-pytest = "*"
 pytest-rich = "*"
 black = "*"
 ruff = "*"
 mkdocs = "*"
+pytest = "*"
 
 [requires]
 python_version = "3.11"
-
