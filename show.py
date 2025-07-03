@@ -311,7 +311,7 @@ def _show_logs(poutput, args):
                         console.print("\n")
                         return
 
-                if is_exists_directory == False:
+                if not is_exists_directory:
                     console.print(f"📂 {args.date} に対応するログディレクトリは存在しないケロ🐸")
 
             else:
@@ -341,7 +341,7 @@ def _show_logs(poutput, args):
                         console.print("\n")
                     else:
                         console.print(f"📂 {log_mode_dir}/{date_dir.name}/ :{num_logs}件のログファイルがあるケロ🐸\n")
-                        console.print(f"ファイル数が多いから省略するケロ🐸\n")
+                        console.print("ファイル数が多いから省略するケロ🐸\n")
 
 
 def _show_log(poutput, args):
