@@ -8,7 +8,6 @@ from pathlib import Path
 from rich.console import Console
 from rich.tree import Tree
 from rich.table import Table
-from rich import box
 from rich.panel import Panel
 from rich.text import Text
 
@@ -20,10 +19,8 @@ import subprocess
 import webbrowser
 import time
 
-from message import print_info, print_success, print_warning, print_error, ask
-from utils import get_table_theme, get_panel_theme, load_sys_config
-
-import copy
+from message import print_info, print_success, print_warning, print_error
+from utils import get_table_theme, get_panel_theme
 
 
 ######################
@@ -314,7 +311,7 @@ def _show_logs(poutput, args):
                         console.print("\n")
                         return
 
-                if is_exists_directory == False:
+                if not is_exists_directory:
                     console.print(f"📂 {args.date} に対応するログディレクトリは存在しないケロ🐸")
 
             else:
@@ -344,7 +341,7 @@ def _show_logs(poutput, args):
                         console.print("\n")
                     else:
                         console.print(f"📂 {log_mode_dir}/{date_dir.name}/ :{num_logs}件のログファイルがあるケロ🐸\n")
-                        console.print(f"ファイル数が多いから省略するケロ🐸\n")
+                        console.print("ファイル数が多いから省略するケロ🐸\n")
 
 
 def _show_log(poutput, args):

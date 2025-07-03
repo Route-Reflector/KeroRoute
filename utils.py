@@ -3,8 +3,6 @@ import ipaddress
 from ruamel.yaml import YAML
 from pathlib import Path
 
-from rich.table import Table
-from rich import box
 from rich.box import ROUNDED, SQUARE, DOUBLE
 
 

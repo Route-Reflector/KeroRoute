@@ -1,4 +1,6 @@
-import subprocess, argparse, ipaddress
+import subprocess
+import argparse
+import ipaddress
 import cmd2
 
 from message import print_info, print_success, print_warning, print_error, ask
@@ -79,13 +81,11 @@ def _do_ping_interactive(self) -> None:
         ttl = int(ttl)
 
 
-    save_log: bool = False    
     log: str = ask("ログは保存するケロ？🐸(yes/no): ")        
     if log == "":
         log = "no"
 
     if log.lower() == "yes":
-        save_log = True
         # TODO: ここにログを保存する処理。
         print_info(self.poutput, "💾ログ保存モードONケロ🐸🔛")
 

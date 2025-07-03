@@ -4,7 +4,7 @@ from pathlib import Path
 from netmiko import ConnectHandler
 import cmd2
 from ruamel.yaml import YAML
-from message import print_info, print_success, print_warning, print_error, ask
+from message import print_info, print_success, print_warning, print_error
 from utils import sanitize_filename_for_log
 
 
@@ -99,7 +99,7 @@ def _execute_commands_on_device(connection, node_prompt, hostname_for_log, args,
 
             try:
                 exec_commands = commands_lists_data["commands_lists"][f"{device_type}"][f"{args.commands_list}"]["commands_list"]
-            except Exception as e:
+            except Exception:
                 raise KeyError(f"[{hostname_for_log}] commands-lists.yamlの構造がおかしいケロ🐸")
 
             full_output_list = []
@@ -151,7 +151,7 @@ def _execute_on_device(device: dict, args, poutput, hostname_for_log) -> None:
     if args.memo and not args.log:
         print_warning(poutput, "--memo は --log が指定されているときだけ有効ケロ🐸")
     
-    if args.log == True:
+    if args.log:
         date_str = datetime.now().strftime("%Y%m%d")
         log_dir = Path("logs") / "execute" / date_str
         log_dir.mkdir(parents=True, exist_ok=True)
