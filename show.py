@@ -8,7 +8,6 @@ from pathlib import Path
 from rich.console import Console
 from rich.tree import Tree
 from rich.table import Table
-from rich import box
 from rich.panel import Panel
 from rich.text import Text
 
@@ -20,10 +19,8 @@ import subprocess
 import webbrowser
 import time
 
-from message import print_info, print_success, print_warning, print_error, ask
-from utils import get_table_theme, get_panel_theme, load_sys_config
-
-import copy
+from message import print_info, print_success, print_warning, print_error
+from utils import get_table_theme, get_panel_theme
 
 
 ######################
