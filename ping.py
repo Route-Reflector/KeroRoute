@@ -81,7 +81,6 @@ def _do_ping_interactive(self) -> None:
         ttl = int(ttl)
 
 
-    save_log: bool = False    
     log: str = ask("ログは保存するケロ？🐸(yes/no): ")        
     if log == "":
         log = "no"
