@@ -1,9 +1,42 @@
+# Python build artifacts
 __pycache__/
-venv/
-.env
+*.pyc
+*.pyo
 *.log
-logs/*.log
+*.bak
+*~
+
+# Virtual environment
+venv/
+
+# Environment/config/secret files
+.env
+*.gpg
+*.asc
+*.key
+*.pem
+*.crt
+
+# Logs and temp files
+logs/
+tmp/
+
+# KeroRoute project YAMLs (not for public)
 inventory.yaml
 commands-lists.yaml
+
+# Editor/IDE settings
 .vscode/
-tmp/*
+.idea/
+*.swp
+
+# Test artifacts
+.coverage
+htmlcov/
+coverage.xml
+.tox/
+pytest_cache/
+
+# OS-specific junk files
+.DS_Store
+Thumbs.db
