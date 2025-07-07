@@ -1,0 +1,21 @@
+[tool.ruff]
+line-length = 200
+target-version = "py38"
+
+# 除外対象ディレクトリ
+exclude = ["venv", ".venv", "env", ".env"]
+
+[tool.ruff.lint]
+select = [
+  "E",  # pycodestyle errors
+  "F",  # pyflakes
+  "W",  # pycodestyle warnings
+  "I",  # isort（インポート順）
+]
+
+# `__init__.py` のimportもチェック対象にする（※Ruffでは今後常に対象になる予定）
+ignore-init-module-imports = true
+
+# 未使用の変数を明示的に許可する接頭辞（例えば _var）
+dummy-variable-rgx = "^_.*"
+
