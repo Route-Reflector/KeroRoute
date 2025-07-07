@@ -1,27 +1,37 @@
 # 🐸 KeroRoute
 
-A network automation tool for **ROOKIE network engineer.**
+A network automation tool for **rookie network engineer.**
 KeroRoute makes CLI-based automation **fun**, **friendly**, and **froggy** 🐸
 
+CLI-based network automation tool for lazy NetEngs 🐸
+
+> [!WARNING]  
+> 🚧 **Work in Progress (WIP)**  
+> ⚠️ **This tool is under active development. Use at your own risk.**  
+>  開発中のツールです。不具合や仕様変更の可能性があります。
+
+
 ## KeroRouteとは
-**netmiko**を利用したCLI形式のnetwork automation toolです。
+
+**netmiko**を利用したCLI形式のNetwork Automation Toolです。  
 ルーキーネットワークエンジニア向けに作られています。
 
-ciscoルータで作業する感覚で、pyatsやansible等のnetwork automation toolより学習コストが少なく始められます。
-🐸がぺちぺち跳ねるような感覚でnetwork automation に親しんで行きましょう。
+ciscoルータで作業する感覚で、pyatsやansible等のNetwork Automation Toolより学習コストが少なく始められます。  
+
+🐸がぺちぺち跳ねるような感覚で Network Automation に親しんで行きましょう。
 
 また、既存のレガシーソフトウェアを置き換える🐸のが目標です。
 
-3Cdaemonとかまだ使ってませんか？
-
 ネットワークは好きですが、ネットワークエンジニアという仕事が嫌いなあなたにピッタリのツールです。
 
-仕事用のツールは硬派で無骨なソフトが多いのであえてemojiやメッセージ文言は遊んでいます。
+仕事用のツールは硬派で無骨なソフトが多いのであえてemojiやメッセージ文言を取り入れています。
 
 ## 特徴 | Features
-* execute
-* ping
-
+- 🐸 シンプルな CLI (cmd2 + rich)
+- 📦 execute (単一コマンド / コマンドリスト)
+- 🗂️ YAMLインベントリによるホスト管理
+- 💾 ログの保存・メモ付き
+- 🔍 show コマンドで情報可視化 (hosts, groups, logs, diff)
 
 ## インストール | Install
 
@@ -59,6 +69,7 @@ ruff check .
 pipenv requirements          > requirements.txt
 pipenv requirements --dev    > requirements-dev.txt
 ```
+
 ---
 
 ## 使用方法 | How to use
@@ -84,80 +95,42 @@ execute -i xx.xx.xx.xx -u username -p password -c "show ip int brief" --log --me
 
 ## 🗺️ Roadmap
 
-version 1.0
----
-* カラー＆絵文字出力
-
-* executeコマンド（ログ保存/メモ付き対応）
-  * --host, --group によるYAMLインベントリ対応
-  * コマンドリスト機能
-
-* pingコマンド
-
-* tracerouteコマンド
-
-*  ログ出力形式のカスタマイズ（JSON, txt, etc）
-
-*  ログ保存先ディレクトリの指定 or 切替
-
-*  ログの自動日付ディレクトリ振り分け
-  例： logs/2025-05-01/ログファイル名.log
-
-* GPGによる認証情報の暗号化
-
-* diff比較
 ---
 
+### ✅ version 0.x – 実装済み（開発中）
 
-version 2.0 
+- 🐸 execute コマンド (--host / --group / --log / --memo 対応)
+- 📦 コマンドリスト (YAML形式) による複数コマンド実行
+- 💾 ログ自動保存 (実行時刻 + ホスト名 + コマンド名 + メモ)
+- 📁 ログの自動日付ディレクトリ振り分け  
+  - example: logs/2025-05-01/ログファイル名.log
+- 🎨 rich出力 (カラー & 絵文字)
+- 🔍 show コマンド (inventory / group / commands / logs / diff)  
 ---
 
-* Docker化対応
+### 🚧 version 1.0 - 実装予定 (実用レベルの安定版)
 
-* ASCIIロゴや読み物表示のカスタマイズ性向上
+- 🛠️ configure コマンド (YAMLから設定投入)
+- 🔐 GPGによる認証情報の暗号化・復号化
+- 🧵 並列処理 (複数ホストへの同時接続 & 実行)
+- 📊 プログレスバー表示
+- 🐸 console接続 (Netmikoによるシリアル対応)
+- 🌐 IPv6対応
+- 🚨 接続失敗やタイムアウト時のレポート (成功 / 失敗表示)
+- 🪜 多段SSH対応 (bastion経由で複数ホストを経由して接続)
+- 🧪 単体テスト/CI対応 (pytest) 
+- ⚙️ グローバル設定ファイルの導入 (ログディレクトリ・カラー・認証方式)
 
-* Ansible 対応
-
-* Terraform 対応
-
-* pyats 対応
-
-* Pyconsoleによるconsole対応
-
-* 多段SSH(マルチホップ)対応
-
-* FTP | TFTP | SFTP 対応 
 ---
 
 
-version x.0 
----
+### 🌈 beyond 1.0 
 
-* 起動時の読み物表示（ゲームのロード画面風）
-
-* 暇つぶしコマンド（叩くとネット語録や小ネタが出る）
-
-* グローバル設定ファイルの導入（ログディレクトリ・カラー・認証方式）
-
-* 単体テスト/CI対応（pytest）
-
-* 出力のparse
-  出力のフィルタリング/色分け（例："up"を緑に、"down"を赤に）
-
-* 接続失敗やタイムアウトのホスト一覧をまとめて表示
-  3台成功 / 2台失敗 とかを最後にまとめたい。
-
-* マルチスレッド処理 | 並列処理対応 (複数ホストへの同時接続・実行)
-
-* ドキュメントの自動生成
-
-* プログレスバー対応
-
-* 通知機能
-  コマンド実行完了時に通知(サウンド、トースト通知、Slack連携など)
-
+- 📦 Docker化対応
+- 🔔 通知機能 (サウンド / トースト通知 / Slack)
+- 🧾 接続結果のまとめ表示 (例: 3台成功 / 2台失敗)
 
 ## ライセンス | License
 
-This project is licensed under the MIT License – see the [LICENSE](./LICENSE) file for details.
+This project is licensed under the MIT License – see the [LICENSE](./LICENSE) file for details.  
 このプロジェクトはMIT License で提供されています。
