@@ -286,3 +286,4 @@ def do_execute(self, args):
         device_list, hostname_for_log_list = _build_device_and_hostname(args, inventory_data)
         for device, hostname_for_log in zip(device_list, hostname_for_log_list):
             _execute_on_device(device, args, self.poutput, hostname_for_log)
+

@@ -37,3 +37,4 @@ def test_is_valid_ip_ipv6():
     assert is_valid_ip("abcd:1234") is False  # セグメント不足
     assert is_valid_ip("fe80:::1") is False  # コロンの使い方が異常
     assert is_valid_ip("::gggg") is False  # 無効な文字
+
