@@ -8,6 +8,7 @@ from ruamel.yaml import YAML
 from message import print_info, print_success, print_warning, print_error
 from utils import sanitize_filename_for_log, load_sys_config
 from concurrent.futures import ThreadPoolExecutor, as_completed
+import re
 
 
 #######################
@@ -161,11 +162,8 @@ def _get_prompt(connection):
     Returns:
         tuple[str, str]: プロンプト（例: "R1#"）とホスト名（例: "R1"）
     """
-    
-    # TODO: 将来的にはdevice_typeでCisco以外の他機種にも対応。
-
     prompt = connection.find_prompt()
-    hostname = prompt.strip("#>")
+    hostname = re.sub(r'[#>]+$', '', prompt)
     
     return prompt, hostname
 
@@ -545,27 +543,32 @@ def _build_device_and_hostname(args, inventory_data=None):
 
 def _default_workers(group_size: int, args) -> int:
     """
-    ワーカースレッド数を決定するヘルパー。
+    並列実行に使うワーカースレッド数（max_workers）を決定する。
 
-    優先順位
-    ----------
-    1. **CLI の ``--workers``**
-       * 1 以上の整数必須。0 以下なら ``ValueError``。
-    2. **sys_config.yaml → ``executor.default_workers``**
-       * 存在しなければ ``DEFAULT_MAX_WORKERS`` へフォールバック。
-    3. **最終丸め処理**
-       * ``min(workers, group_size, DEFAULT_MAX_WORKERS)`` で
-         *グループ台数* と *グローバル上限* の両方を超えないようにする。
+    決定ロジックの優先順位：
+    1. CLI 引数 `--workers` が指定されていればその値を使う（1以上の整数のみ有効）
+    2. 指定がなければ `sys_config.yaml` の `executor.default_workers` を参照
+    3. どちらにもなければ `DEFAULT_MAX_WORKERS`（定数）を使用
+
+    ただし、最終的には `group_size`（ホスト台数）と `DEFAULT_MAX_WORKERS` の両方を超えないように調整する。
 
     Parameters
     ----------
     group_size : int
-        グループに属するホスト台数。
+        グループに含まれるホストの台数（並列実行する対象数）
+    args : argparse.Namespace
+        コマンドライン引数オブジェクト。`args.workers` を参照
 
     Returns
     -------
     int
-        ThreadPoolExecutor に与える ``max_workers``。
+        実際に ThreadPoolExecutor に渡す `max_workers` の値
+
+    Raises
+    ------
+    ValueError
+        - `--workers` に無効な値（0以下や非整数）が指定された場合
+        - `sys_config.yaml` に不正な型や値が書かれていた場合
     """
     workers = args.workers
 
@@ -629,6 +632,7 @@ def do_execute(self, args):
     if args.host:
         device, hostname_for_log = _build_device_and_hostname(args, inventory_data)
         _handle_execution(device, args, self.poutput, hostname_for_log)
+        return
 
     elif args.group:
         # TODO: 将来的には並列処理を実装。
