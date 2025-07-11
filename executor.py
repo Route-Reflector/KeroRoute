@@ -6,7 +6,15 @@ from netmiko.exceptions import NetMikoTimeoutException, NetMikoAuthenticationExc
 import cmd2
 from ruamel.yaml import YAML
 from message import print_info, print_success, print_warning, print_error
-from utils import sanitize_filename_for_log
+from utils import sanitize_filename_for_log, load_sys_config
+from concurrent.futures import ThreadPoolExecutor, as_completed
+import re
+
+
+#######################
+###  CONST_SECTION  ### 
+#######################
+DEFAULT_MAX_WORKERS = 20 # 並列スレッド上限。(sys_config.yamlに設定が無い場合に参照。)
 
 
 ######################
@@ -33,6 +41,10 @@ memo_help = ("ログファイル名に付加する任意のメモ（文字列）
              "保存先: logs/execute/\n"
              "保存名: yearmmdd-hhmmss_[hostname]_[commands_or_commands_list]_[memo]\n"
              "example 20250506-125600_R0_show-ip-int-brief_memo.log")
+workers_help = ("並列実行するワーカースレッド数を指定します。\n"
+                "指定しない場合は sys_config.yaml の executor.default_workers を参照します。\n"
+                "そこにも設定が無いときは、グループ台数と 規定上限(DEFAULT_MAX_WORKERS) の小さい方が自動で採用されます。")
+
 
 
 ######################
@@ -47,6 +59,7 @@ netmiko_execute_parser.add_argument("-P", "--port", type=int, default=22, help=p
 netmiko_execute_parser.add_argument("-t", "--timeout", type=int, default=10, help=timeout_help)
 netmiko_execute_parser.add_argument("-l", "--log", action="store_true", help=log_help)
 netmiko_execute_parser.add_argument("-m", "--memo", type=str, default="", help=memo_help)
+netmiko_execute_parser.add_argument("-w", "--workers", type=int, default=None, metavar="N", help=workers_help)
 
 # mutually exclusive
 target_node = netmiko_execute_parser.add_mutually_exclusive_group(required=True)
@@ -149,11 +162,8 @@ def _get_prompt(connection):
     Returns:
         tuple[str, str]: プロンプト（例: "R1#"）とホスト名（例: "R1"）
     """
-    
-    # TODO: 将来的にはdevice_typeでCisco以外の他機種にも対応。
-
     prompt = connection.find_prompt()
-    hostname = prompt.strip("#>")
+    hostname = re.sub(r'[#>]+$', '', prompt)
     
     return prompt, hostname
 
@@ -259,7 +269,6 @@ def _execute_commands(connection, prompt, hostname, args, poutput, device):
 
     Raises:
         ValueError: args.command または args.commands_list のいずれも指定されていない場合
-        KeyError: コマンドリスト YAML の構造が不正
     """
     if args.command:
         return _execute_command(connection, prompt, args.command)
@@ -355,7 +364,7 @@ def _handle_execution(device: dict, args, poutput, hostname_for_log):
     # ✅ 2. 接続とプロンプト取得
     try:
         connection = _connect_to_device(device, hostname_for_log)
-        print_success(poutput, "🔗接続成功ケロ🐸")
+        print_success(poutput, f"NODE: {hostname_for_log} 🔗接続成功ケロ🐸")
         prompt, hostname = _get_prompt(connection)
     except ConnectionError as e:
         print_error(poutput, str(e))
@@ -377,8 +386,9 @@ def _handle_execution(device: dict, args, poutput, hostname_for_log):
         _save_log(full_output_or_full_output_list, hostname, args, poutput)
 
     # ✅ 6. 結果表示
+    print_info(poutput, f"NODE: {hostname_for_log} 📄OUTPUTケロ🐸")
     poutput(full_output_or_full_output_list)
-    print_success(poutput, "🔚実行完了ケロ🐸")
+    print_success(poutput, f"NODE: {hostname_for_log} 🔚実行完了ケロ🐸")
 
 
 def _load_and_validate_inventory(args):
@@ -531,6 +541,63 @@ def _build_device_and_hostname(args, inventory_data=None):
         return _build_device_from_group(args, inventory_data)
 
 
+def _default_workers(group_size: int, args) -> int:
+    """
+    並列実行に使うワーカースレッド数（max_workers）を決定する。
+
+    決定ロジックの優先順位：
+    1. CLI 引数 `--workers` が指定されていればその値を使う（1以上の整数のみ有効）
+    2. 指定がなければ `sys_config.yaml` の `executor.default_workers` を参照
+    3. どちらにもなければ `DEFAULT_MAX_WORKERS`（定数）を使用
+
+    ただし、最終的には `group_size`（ホスト台数）と `DEFAULT_MAX_WORKERS` の両方を超えないように調整する。
+
+    Parameters
+    ----------
+    group_size : int
+        グループに含まれるホストの台数（並列実行する対象数）
+    args : argparse.Namespace
+        コマンドライン引数オブジェクト。`args.workers` を参照
+
+    Returns
+    -------
+    int
+        実際に ThreadPoolExecutor に渡す `max_workers` の値
+
+    Raises
+    ------
+    ValueError
+        - `--workers` に無効な値（0以下や非整数）が指定された場合
+        - `sys_config.yaml` に不正な型や値が書かれていた場合
+    """
+    workers = args.workers
+
+    if workers or workers == 0: # workers が None なら False、0 だけ特別に True 扱い
+        if type(workers) != int:
+                msg = "--workersは整数である必要があるケロ🐸。"
+                raise ValueError(msg)
+
+        if workers <= 0:
+            msg = "--workersには1以上の整数を指定してくださいケロ🐸"
+            raise ValueError(msg)
+
+    else:
+        system_config = load_sys_config()
+        workers = system_config["executor"].get("default_workers", DEFAULT_MAX_WORKERS)
+
+        if type(workers) != int:
+                msg = "sys_config.yamlのexecutor.default_workerは整数である必要があるケロ🐸。"
+                raise ValueError(msg)
+        
+        if workers <= 0:
+            msg = "executor.default_workersには1以上の整数を指定してくださいケロ🐸"
+            raise ValueError(msg)
+
+
+    workers = min(workers, group_size, DEFAULT_MAX_WORKERS)
+    return workers
+
+
 @cmd2.with_argparser(netmiko_execute_parser)
 def do_execute(self, args):
     """
@@ -565,10 +632,25 @@ def do_execute(self, args):
     if args.host:
         device, hostname_for_log = _build_device_and_hostname(args, inventory_data)
         _handle_execution(device, args, self.poutput, hostname_for_log)
+        return
 
     elif args.group:
         # TODO: 将来的には並列処理を実装。
         device_list, hostname_for_log_list = _build_device_and_hostname(args, inventory_data)
-        for device, hostname_for_log in zip(device_list, hostname_for_log_list):
-            _handle_execution(device, args, self.poutput, hostname_for_log)
+
+        max_workers = _default_workers(len(device_list), args)
+
+        with ThreadPoolExecutor(max_workers=max_workers) as pool:
+
+            futures = []
+            for device, hostname_for_log in zip(device_list, hostname_for_log_list):
+                future = pool.submit(_handle_execution, device, args, self.poutput, hostname_for_log)
+                futures.append(future)
+
+            for future in as_completed(futures):
+                future.result()
+
+
+        # for device, hostname_for_log in zip(device_list, hostname_for_log_list):
+        #     _handle_execution(device, args, self.poutput, hostname_for_log)
 

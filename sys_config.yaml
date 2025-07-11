@@ -43,8 +43,5 @@ show: # 未使用
   truncate_tags: true
   default_sort: "hostname"
 
-execute: # 未使用
-  default_timeout: 10
-  retry_count: 2
-  default_log: true
-
+executor: 
+  default_workers: 20 # groupオプションの並列実行数。
