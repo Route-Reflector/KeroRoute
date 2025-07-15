@@ -91,7 +91,7 @@ def validate_commands_list(args, device, poutput):
         commands_lists_path = Path("commands-lists.yaml")
         if not commands_lists_path.exists():
             msg = "commands-lists.yaml が見つからないケロ🐸"
-            print_error(poutput, msg)
+            print_error(msg)
             raise FileNotFoundError(msg)
 
         yaml = YAML()
@@ -101,12 +101,12 @@ def validate_commands_list(args, device, poutput):
         device_type = device["device_type"]
         if device_type not in data["commands_lists"]:
             msg = f"デバイスタイプ '{device_type}' はcommands-lists.yamlに存在しないケロ🐸"
-            print_error(poutput, msg)
+            print_error(msg)
             raise ValueError(msg)
 
         if args.commands_list not in data["commands_lists"][device_type]:
             msg = f"コマンドリスト '{args.commands_list}' はcommands-lists.yamlに存在しないケロ🐸"
-            print_error(poutput, msg)
+            print_error(msg)
             raise ValueError(msg)
 
 
@@ -230,11 +230,11 @@ def _execute_commands_list(connection, prompt, hostname_for_log, args, poutput, 
 
         if device_type not in commands_lists_data["commands_lists"]:
             msg = f"デバイスタイプ '{device_type}' はcommands-lists.yamlに存在しないケロ🐸"
-            print_error(poutput, msg)
+            print_error(msg)
             raise ValueError(msg)
         if args.commands_list not in commands_lists_data["commands_lists"][device_type]:
             msg = f"コマンドリスト '{args.commands_list}' はcommands-lists.yamlに存在しないケロ🐸"
-            print_error(poutput, msg)
+            print_error(msg)
             raise ValueError(msg)
 
         try:
@@ -312,11 +312,11 @@ def _save_log(full_output_or_full_output_list: str, hostname: str, args, poutput
     """
     if args.memo and not args.log:
         msg = "--memo は --log が指定されているときだけ有効ケロ🐸"
-        print_warning(poutput, msg)
+        print_warning(msg)
         raise ValueError(msg)
     
     if args.log:
-        print_info(poutput, "💾ログ保存モードONケロ🐸🔛")
+        print_info("💾ログ保存モードONケロ🐸🔛")
         date_str = datetime.now().strftime("%Y%m%d")
         log_dir = Path("logs") / "execute" / date_str
         log_dir.mkdir(parents=True, exist_ok=True)
@@ -339,7 +339,7 @@ def _save_log(full_output_or_full_output_list: str, hostname: str, args, poutput
 
         with open(log_path, "w") as log_file:
             log_file.write(full_output_or_full_output_list)
-            print_success(poutput, f"💾ログ保存完了ケロ🐸⏩⏩⏩ {log_path}")
+            print_success(f"💾ログ保存完了ケロ🐸⏩⏩⏩ {log_path}")
 
 
 
@@ -364,17 +364,17 @@ def _handle_execution(device: dict, args, poutput, hostname_for_log):
     # ✅ 2. 接続とプロンプト取得
     try:
         connection = _connect_to_device(device, hostname_for_log)
-        print_success(poutput, f"NODE: {hostname_for_log} 🔗接続成功ケロ🐸")
+        print_success(f"NODE: {hostname_for_log} 🔗接続成功ケロ🐸")
         prompt, hostname = _get_prompt(connection)
     except ConnectionError as e:
-        print_error(poutput, str(e))
+        print_error(str(e))
         return
 
     # ✅ 3. コマンド実行（単発 or リスト）
     try:
         full_output_or_full_output_list = _execute_commands(connection, prompt, hostname, args, poutput, device)
     except (KeyError, ValueError) as e:
-        print_error(poutput, str(e))
+        print_error(str(e))
         connection.disconnect()
         return
 
@@ -386,9 +386,9 @@ def _handle_execution(device: dict, args, poutput, hostname_for_log):
         _save_log(full_output_or_full_output_list, hostname, args, poutput)
 
     # ✅ 6. 結果表示
-    print_info(poutput, f"NODE: {hostname_for_log} 📄OUTPUTケロ🐸")
+    print_info(f"NODE: {hostname_for_log} 📄OUTPUTケロ🐸")
     poutput(full_output_or_full_output_list)
-    print_success(poutput, f"NODE: {hostname_for_log} 🔚実行完了ケロ🐸")
+    print_success(f"NODE: {hostname_for_log} 🔚実行完了ケロ🐸")
 
 
 def _load_and_validate_inventory(args):

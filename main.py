@@ -22,7 +22,7 @@ class KeroRoute(cmd2.Cmd):
         self.poutput(logo)
 
     def do_exit(self, _):
-        print_info(self.poutput, "KeroRouteを終了するケロ🐸🔚")
+        print_info("KeroRouteを終了するケロ🐸🔚")
         return True 
 
 KeroRoute.do_ping = ping.do_ping
