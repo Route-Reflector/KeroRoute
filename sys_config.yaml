@@ -7,6 +7,9 @@ system:
   system_config_directory: "" # main.pyと同一フォルダの場合は""
   system_config_filename: "system_config.yaml"
 
+user_interface:
+  message_style: plain # plain or panel
+
 theme:
   table:
     border_style: "color(154)"        # テーブル枠：落ち着いたグリーン

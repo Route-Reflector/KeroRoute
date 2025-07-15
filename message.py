@@ -1,19 +1,57 @@
-def print_info(poutput, message: str):
-    poutput(f"\033[96m🪧[INFO] {message}\033[0m")
+from rich.console import Console
+from rich.panel import Panel
+from datetime import datetime
 
-def print_success(poutput, message: str):
-    poutput(f"\033[92m💯[SUCCESS] {message}\033[0m")
+from utils import load_sys_config
 
-def print_warning(poutput, message: str):
-    poutput(f"\033[33m🚧[WARNING] {message}\033[0m")  # amber風
-    # poutput(f"\033[33m🚥{message}\033[0m")  # amber風
 
-def print_error(poutput, message: str):
-    poutput(f"\033[91m🚨[ERROR] {message}\033[0m")
+def get_style() -> str:
+        return load_sys_config.get("user_interface", {}).get("message_style", "plain")
+
+
+style = get_style()
+_console = Console()
+
+
+
+def _timestamp() -> str:
+    now = datetime.now()
+    return f"[{now.strftime('%H:%M:%S')}.{int(now.microsecond / 1000):03d}]"
+
+
+def print_info(message: str):
+    if style == "panel":
+        _console.print(Panel(f"[bright_cyan]{_timestamp()} 🪧[INFO] {message}[/bright_cyan]"))
+    else:
+        _console.print(f"[bright_cyan]{_timestamp()} 🪧[INFO] {message}[/bright_cyan]")
+
+
+def print_success(message: str):
+    if style == "panel":
+        _console.print(Panel(f"[bright_green]{_timestamp()} 💯[SUCCESS] {message}[/bright_green]"))
+    else:
+        _console.print(f"[bright_green]{_timestamp()} 💯[SUCCESS] {message}[/bright_green]")
+
+
+def print_warning(message: str):
+    if style == "panel":
+        _console.print(Panel(f"[bright_yellow]{_timestamp()} 🚧[WARNING] {message}[/bright_yellow]"))
+    else:
+        _console.print(f"[bright_yellow]{_timestamp()} 🚧[WARNING] {message}[/bright_yellow]")
+
+
+def print_error(message: str):
+    if style == "panel":
+        _console.print(Panel(f"[bright_red]{_timestamp()} 🚨[ERROR] {message}[/bright_red]"))
+    else:
+        _console.print(f"[bright_red]{_timestamp()} 🚨[ERROR] {message}[/bright_red]")
 
 
 def ask(message: str) -> str:
-    colored = f"\033[96m📋[INPUT] {message}\033[0m"
-    return input(colored)
+    if style == "panel":
+        _console.print(Panel(f"[bright_blue]{_timestamp()} 📋[INPUT] {message}[/bright_blue]"))
+    else:
+        _console.print(f"[bright_blue]{_timestamp()} 📋[INPUT] {message}[/bright_blue]")
+    return input()
 
 
