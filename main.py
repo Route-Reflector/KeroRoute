@@ -2,13 +2,14 @@ import cmd2
 
 import ping
 import executor
+import console
 import show
 
 
 from message import print_info
 
 """
-cmd3のコマンドライン引数はすべて文字列型となるため、注意が必要。
+cmd2のコマンドライン引数はすべて文字列型となるため、注意が必要。
 たとえば、Trueと入力しても実際には"True"となるため型変換が必要。
 """
 
@@ -27,7 +28,9 @@ class KeroRoute(cmd2.Cmd):
 
 KeroRoute.do_ping = ping.do_ping
 KeroRoute.do_execute = executor.do_execute
+KeroRoute.do_console = console.do_console
 KeroRoute.do_show = show.do_show
+
 
 if __name__ == "__main__":
     cli = KeroRoute()
