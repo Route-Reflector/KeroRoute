@@ -6,7 +6,7 @@ from utils import load_sys_config
 
 
 def get_style() -> str:
-        return load_sys_config.get("user_interface", {}).get("message_style", "plain")
+        return load_sys_config().get("user_interface", {}).get("message_style", "plain")
 
 
 style = get_style()

@@ -72,14 +72,16 @@ target_command.add_argument("-c", "--command", type=str, default="", help=comman
 target_command.add_argument("-L", "--commands-list", type=str, default="", help=command_list_help)
 
 
-def validate_commands_list(args, device, poutput):
+def validate_commands_list(args, device):
     """
     commands-lists.yaml に基づいて、指定されたコマンドリストの存在を検証する。
 
     Args:
         args: argparse.Namespace - コマンドライン引数
         device: dict - 接続対象のデバイス情報（device_type含む）
-        poutput: function - cmd2の出力関数（print代替）
+
+    Returns:
+        commands_lists_data
 
     Raises:
         FileNotFoundError: commands-lists.yaml が存在しない場合
@@ -87,6 +89,12 @@ def validate_commands_list(args, device, poutput):
     """
 
     # ✅ commands-listが指定されている場合は先に存在チェック
+
+    if not args.commands_list:
+        msg = "-L or --commands_list が指定されていないケロ🐸"
+        print_error(msg)
+        raise ValueError(msg)
+
     if args.commands_list:
         commands_lists_path = Path("commands-lists.yaml")
         if not commands_lists_path.exists():
@@ -96,18 +104,21 @@ def validate_commands_list(args, device, poutput):
 
         yaml = YAML()
         with commands_lists_path.open("r") as f:
-            data = yaml.load(f)
+            commands_lists_data = yaml.load(f)
 
         device_type = device["device_type"]
-        if device_type not in data["commands_lists"]:
+
+        if device_type not in commands_lists_data["commands_lists"]:
             msg = f"デバイスタイプ '{device_type}' はcommands-lists.yamlに存在しないケロ🐸"
             print_error(msg)
             raise ValueError(msg)
 
-        if args.commands_list not in data["commands_lists"][device_type]:
+        if args.commands_list not in commands_lists_data["commands_lists"][device_type]:
             msg = f"コマンドリスト '{args.commands_list}' はcommands-lists.yamlに存在しないケロ🐸"
             print_error(msg)
             raise ValueError(msg)
+    
+    return commands_lists_data
 
 
 def _connect_to_device(device: dict, hostname_for_log:str):
@@ -180,12 +191,13 @@ def _execute_command(connection, prompt, command):
     Returns:
         str: 実行結果（プロンプト＋コマンド＋出力）
     """
+    prompt = connection.find_prompt()
     output = connection.send_command(command)
-    full_output = f"{prompt} {command}\n{output}"
+    full_output = f"{prompt} {command}\n{output}\n"
 
     return full_output
 
-def _execute_commands_list(connection, prompt, hostname_for_log, args, poutput, device):
+def _execute_commands_list(connection, prompt, hostname_for_log, args, device):
     """
     commands-lists.yaml で定義された「コマンドリスト」を順次実行する。
 
@@ -199,8 +211,6 @@ def _execute_commands_list(connection, prompt, hostname_for_log, args, poutput, 
         メッセージ表示や例外ラップ用の識別子。
     args : argparse.Namespace
         CLI 引数オブジェクト。`args.commands_list` を使用。
-    poutput : Callable
-        `cmd2.Cmd.poutput` 互換の出力関数。エラー表示に使用。
     device : dict
         対象デバイス辞書。ここでは主に `device['device_type']` を参照。
 
@@ -218,38 +228,23 @@ def _execute_commands_list(connection, prompt, hostname_for_log, args, poutput, 
     KeyError
         YAML 構造が想定外だった場合
     """
-    commands_lists_path = Path("commands-lists.yaml")
-    if not commands_lists_path.exists():
-        raise FileNotFoundError("commands-lists.yamlが見つからないケロ🐸")
 
-    yaml = YAML()
-    with open(commands_lists_path, "r") as file_commands_lists:
-        commands_lists_data = yaml.load(file_commands_lists)
+    try:
+        commands_lists_data = validate_commands_list(args, device)
+        exec_commands = commands_lists_data["commands_lists"][device["device_type"]][f"{args.commands_list}"]["commands_list"]
+    except Exception as e:
+        msg = f"[{hostname_for_log}] commands-lists.yamlの構造がおかしいケロ🐸 詳細: {e}"
+        print_error(msg)
+        raise KeyError(msg)
 
-        device_type = device["device_type"]
+    full_output_list = []
 
-        if device_type not in commands_lists_data["commands_lists"]:
-            msg = f"デバイスタイプ '{device_type}' はcommands-lists.yamlに存在しないケロ🐸"
-            print_error(msg)
-            raise ValueError(msg)
-        if args.commands_list not in commands_lists_data["commands_lists"][device_type]:
-            msg = f"コマンドリスト '{args.commands_list}' はcommands-lists.yamlに存在しないケロ🐸"
-            print_error(msg)
-            raise ValueError(msg)
-
-        try:
-            exec_commands = commands_lists_data["commands_lists"][f"{device_type}"][f"{args.commands_list}"]["commands_list"]
-        except Exception:
-            raise KeyError(f"[{hostname_for_log}] commands-lists.yamlの構造がおかしいケロ🐸")
-
-        full_output_list = []
-
-        for command in exec_commands:
-            output = connection.send_command(command)
-            full_output = f"{prompt} {command}\n{output}"
-            full_output_list.append(full_output)
-        
-        return "\n".join(full_output_list)
+    for command in exec_commands:
+        output = connection.send_command(command)
+        full_output = f"{prompt} {command}\n{output}\n"
+        full_output_list.append(full_output)
+    
+    return "\n".join(full_output_list)
 
 
 def _execute_commands(connection, prompt, hostname, args, poutput, device):
@@ -279,7 +274,7 @@ def _execute_commands(connection, prompt, hostname, args, poutput, device):
 
 
 
-def _save_log(full_output_or_full_output_list: str, hostname: str, args, poutput) -> None:
+def _save_log(result_output_string: str, hostname: str, args, mode: str = "execute") -> None:
     """
     実行結果を日時付きファイルに保存するユーティリティ。
 
@@ -289,14 +284,14 @@ def _save_log(full_output_or_full_output_list: str, hostname: str, args, poutput
 
     Parameters
     ----------
-    full_output_or_full_output_list : str
+    result_output_string : str
         コマンド実行結果全体（単発でも複数でも OK）。
     hostname : str
         ログファイル名に含めるホスト名。
     args : argparse.Namespace
         CLI 引数。`--log`, `--memo`, `--command`, `--commands-list` を参照。
-    poutput : Callable
-        `cmd2` の出力関数。警告や完了メッセージに使用。
+    mode: str, optional
+         ログ保存モード（"execute", "console", など）。デフォルトは "execute"。
     
     Returns
     -------
@@ -318,7 +313,7 @@ def _save_log(full_output_or_full_output_list: str, hostname: str, args, poutput
     if args.log:
         print_info("💾ログ保存モードONケロ🐸🔛")
         date_str = datetime.now().strftime("%Y%m%d")
-        log_dir = Path("logs") / "execute" / date_str
+        log_dir = Path("logs") / mode / date_str
         log_dir.mkdir(parents=True, exist_ok=True)
         timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
 
@@ -338,7 +333,7 @@ def _save_log(full_output_or_full_output_list: str, hostname: str, args, poutput
         log_path = log_dir / file_name
 
         with open(log_path, "w") as log_file:
-            log_file.write(full_output_or_full_output_list)
+            log_file.write(result_output_string)
             print_success(f"💾ログ保存完了ケロ🐸⏩⏩⏩ {log_path}")
 
 
@@ -357,7 +352,7 @@ def _handle_execution(device: dict, args, poutput, hostname_for_log):
     # ✅ 1. commands-list の存在チェック（必要なら）
     try:
         if args.commands_list:
-            validate_commands_list(args, device, poutput)
+            validate_commands_list(args, device)
     except (FileNotFoundError, ValueError):
         return
 
@@ -372,7 +367,7 @@ def _handle_execution(device: dict, args, poutput, hostname_for_log):
 
     # ✅ 3. コマンド実行（単発 or リスト）
     try:
-        full_output_or_full_output_list = _execute_commands(connection, prompt, hostname, args, poutput, device)
+        result_output_string = _execute_commands(connection, prompt, hostname, args, poutput, device)
     except (KeyError, ValueError) as e:
         print_error(str(e))
         connection.disconnect()
@@ -383,35 +378,38 @@ def _handle_execution(device: dict, args, poutput, hostname_for_log):
 
     # ✅ 5. ログ保存（--log指定時のみ）
     if args.log:
-        _save_log(full_output_or_full_output_list, hostname, args, poutput)
+        _save_log(result_output_string, hostname, args, poutput)
 
     # ✅ 6. 結果表示
     print_info(f"NODE: {hostname_for_log} 📄OUTPUTケロ🐸")
-    poutput(full_output_or_full_output_list)
+    poutput(result_output_string)
     print_success(f"NODE: {hostname_for_log} 🔚実行完了ケロ🐸")
 
 
-def _load_and_validate_inventory(args):
+def _load_and_validate_inventory(host=None, group=None):
     """
-    inventory.yaml を読み込み、`--host` / `--group` オプションの存在を検証する。
+    inventory.yaml を読み込み、指定されたホストまたはグループの存在を検証する。
 
     Parameters
     ----------
-    args : argparse.Namespace
-        CLI 引数。`args.host` / `args.group` を使用。
+    host : str, optional
+        inventory.yaml 内のホスト名。指定されている場合は存在を検証する。
+    group : str, optional
+        inventory.yaml 内のグループ名。指定されている場合は存在を検証する。
 
     Returns
     -------
     dict
-        パース済み inventory データ
+        パース済みの inventory データ。
 
     Raises
     ------
     FileNotFoundError
-        inventory.yaml が見つからない場合
+        inventory.yaml が見つからない場合。
     ValueError
-        指定された host / group が inventory.yamlに存在しない場合
+        指定された host または group が inventory.yaml に存在しない場合。
     """
+
     inventory_path = Path("inventory.yaml")
     if not inventory_path.exists():
         raise FileNotFoundError("inventory.yamlが存在しないケロ🐸")
@@ -420,11 +418,15 @@ def _load_and_validate_inventory(args):
     with open(inventory_path, "r") as inventory:
         inventory_data = yaml.load(inventory)
 
-    if args.host and args.host not in inventory_data["all"]["hosts"]:
-            raise ValueError(f"ホスト '{args.host}' はinventory.yamlに存在しないケロ🐸")
+    if host and host not in inventory_data["all"]["hosts"]:
+            msg = f"ホスト '{host}' はinventory.yamlに存在しないケロ🐸"
+            print_error(msg)
+            raise ValueError(msg)
 
-    elif args.group and args.group not in inventory_data["all"]["groups"]:
-            raise ValueError(f"グループ '{args.group}' はinventory.yamlに存在しないケロ🐸")
+    elif group and group not in inventory_data["all"]["groups"]:
+            msg = f"グループ '{group}' はinventory.yamlに存在しないケロ🐸"
+            print_error(msg)
+            raise ValueError(msg)
     
     return inventory_data
     
@@ -620,14 +622,15 @@ def do_execute(self, args):
         device, hostname_for_log = _build_device_and_hostname(args)
         _handle_execution(device, args, self.poutput, hostname_for_log)
         return
-    
-    try:
-        inventory_data = _load_and_validate_inventory(args)
-    
-    except (FileNotFoundError, ValueError) as e:
-        print_error(self.poutput, str(e))
-        return
-    
+
+    if args.host or args.group: 
+        try:
+            inventory_data = _load_and_validate_inventory(host=args.host, group=args.group)
+        
+        except (FileNotFoundError, ValueError) as e:
+            print_error(self.poutput, str(e))
+            return
+        
     
     if args.host:
         device, hostname_for_log = _build_device_and_hostname(args, inventory_data)
@@ -635,7 +638,6 @@ def do_execute(self, args):
         return
 
     elif args.group:
-        # TODO: 将来的には並列処理を実装。
         device_list, hostname_for_log_list = _build_device_and_hostname(args, inventory_data)
 
         max_workers = _default_workers(len(device_list), args)
@@ -650,7 +652,4 @@ def do_execute(self, args):
             for future in as_completed(futures):
                 future.result()
 
-
-        # for device, hostname_for_log in zip(device_list, hostname_for_log_list):
-        #     _handle_execution(device, args, self.poutput, hostname_for_log)
 
