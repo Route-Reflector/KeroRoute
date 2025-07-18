@@ -24,6 +24,7 @@ tmp/
 # KeroRoute project YAMLs (not for public)
 inventory.yaml
 commands-lists.yaml
+config-lists.yaml
 
 # Editor/IDE settings
 .vscode/

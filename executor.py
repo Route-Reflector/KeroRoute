@@ -291,7 +291,7 @@ def _save_log(result_output_string: str, hostname: str, args, mode: str = "execu
     args : argparse.Namespace
         CLI 引数。`--log`, `--memo`, `--command`, `--commands-list` を参照。
     mode: str, optional
-         ログ保存モード（"execute", "console", など）。デフォルトは "execute"。
+         ログ保存モード（"execute", "console", "configure"など）。デフォルトは "execute"。
     
     Returns
     -------
@@ -317,7 +317,9 @@ def _save_log(result_output_string: str, hostname: str, args, mode: str = "execu
         log_dir.mkdir(parents=True, exist_ok=True)
         timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
 
-        if args.command:
+        if mode == "configure":
+            sanitized_command = sanitize_filename_for_log(args.config_list)
+        elif args.command:
             sanitized_command = sanitize_filename_for_log(args.command)
         elif args.commands_list:
             sanitized_command = sanitize_filename_for_log(args.commands_list)
@@ -378,7 +380,7 @@ def _handle_execution(device: dict, args, poutput, hostname_for_log):
 
     # ✅ 5. ログ保存（--log指定時のみ）
     if args.log:
-        _save_log(result_output_string, hostname, args, poutput)
+        _save_log(result_output_string, hostname, args)
 
     # ✅ 6. 結果表示
     print_info(f"NODE: {hostname_for_log} 📄OUTPUTケロ🐸")
