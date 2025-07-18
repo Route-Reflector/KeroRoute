@@ -1,0 +1,10 @@
+config_lists:
+  cisco_ios:
+    loopback_setup:
+      description: "Loopbackインターフェースの設定"
+      config_list:
+        - interface Loopback0
+        - description test-loop
+        - ip address 10.1.1.1 255.255.255.255
+        - no shut
+      tags: ["interface", "loopback"]
