@@ -28,8 +28,8 @@ command_help = "1つのコマンドを直接指定して実行します。"
 command_list_help = "コマンドリスト名（commands-lists.yamlに定義）を指定して実行します。" \
                     "device_typeはホストから自動で選択されます。"
 
-username_help = "SSH接続に使用するユーザー名を指定します。省略時はinventory.yamlの値を使用します。"
-password_help = "SSH接続に使用するパスワードを指定します。省略時はinventory.yamlの値を使用します。"
+username_help = "SSH接続に使用するユーザー名を指定します。--ip専用。--host|--group指定時はinventory.yamlの値を使用します。"
+password_help = "SSH接続に使用するパスワードを指定します。--ip専用。--host|--group指定時はinventory.yamlの値を使用します。"
 device_type_help = "Netmikoにおけるデバイスタイプを指定します（例: cisco_ios）。省略時は 'cisco_ios' です。"
 port_help = "SSH接続に使用するポート番号を指定します（デフォルト: 22）"
 timeout_help = "SSH接続のタイムアウト秒数を指定します（デフォルト: 10秒）"
@@ -44,7 +44,8 @@ memo_help = ("ログファイル名に付加する任意のメモ（文字列）
 workers_help = ("並列実行するワーカースレッド数を指定します。\n"
                 "指定しない場合は sys_config.yaml の executor.default_workers を参照します。\n"
                 "そこにも設定が無いときは、グループ台数と 規定上限(DEFAULT_MAX_WORKERS) の小さい方が自動で採用されます。")
-
+secret_help = ("enable に入るための secret を指定します。(省略時は password を流用します。)\n"
+               "--ip専用。--host|--group指定時はinventory.yamlの値を使用します。")
 
 
 ######################
@@ -60,6 +61,7 @@ netmiko_execute_parser.add_argument("-t", "--timeout", type=int, default=10, hel
 netmiko_execute_parser.add_argument("-l", "--log", action="store_true", help=log_help)
 netmiko_execute_parser.add_argument("-m", "--memo", type=str, default="", help=memo_help)
 netmiko_execute_parser.add_argument("-w", "--workers", type=int, default=None, metavar="N", help=workers_help)
+netmiko_execute_parser.add_argument("-s", "--secret", type=str, default="", help=secret_help)
 
 # mutually exclusive
 target_node = netmiko_execute_parser.add_mutually_exclusive_group(required=True)
@@ -451,6 +453,7 @@ def _build_device_from_ip(args):
         "ip": args.ip,
         "username": args.username,
         "password": args.password,
+        "secret": args.secret or args.password,
         "port": args.port,
         "timeout": args.timeout
         }
@@ -480,6 +483,7 @@ def _build_device_from_host(args, inventory_data):
         "ip": node_info["ip"],
         "username": node_info["username"],
         "password": node_info["password"],
+        "secret": node_info["secret"] or node_info["password"],
         "port": node_info["port"],
         "timeout": node_info["timeout"] 
         }
@@ -513,6 +517,7 @@ def _build_device_from_group(args, inventory_data):
             "ip": node_info["ip"],
             "username": node_info["username"],
             "password": node_info["password"],
+            "secret": node_info["secret"] or node_info["password"],
             "port": node_info["port"],
             "timeout": node_info["timeout"] 
             } 
