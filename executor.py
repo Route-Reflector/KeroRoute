@@ -120,7 +120,8 @@ def validate_commands_list(args, device):
             print_error(msg)
             raise ValueError(msg)
     
-    return commands_lists_data
+    exec_commands = commands_lists_data["commands_lists"][device["device_type"]][f"{args.commands_list}"]["commands_list"]
+    return exec_commands
 
 
 def _connect_to_device(device: dict, hostname_for_log:str):
@@ -199,7 +200,7 @@ def _execute_command(connection, prompt, command):
 
     return full_output
 
-def _execute_commands_list(connection, prompt, hostname_for_log, args, device):
+def _execute_commands_list(connection, prompt, exec_commands):
     """
     commands-lists.yaml で定義された「コマンドリスト」を順次実行する。
 
@@ -230,15 +231,6 @@ def _execute_commands_list(connection, prompt, hostname_for_log, args, device):
     KeyError
         YAML 構造が想定外だった場合
     """
-
-    try:
-        commands_lists_data = validate_commands_list(args, device)
-        exec_commands = commands_lists_data["commands_lists"][device["device_type"]][f"{args.commands_list}"]["commands_list"]
-    except Exception as e:
-        msg = f"[{hostname_for_log}] commands-lists.yamlの構造がおかしいケロ🐸 詳細: {e}"
-        print_error(msg)
-        raise KeyError(msg)
-
     full_output_list = []
 
     for command in exec_commands:
@@ -249,7 +241,7 @@ def _execute_commands_list(connection, prompt, hostname_for_log, args, device):
     return "\n".join(full_output_list)
 
 
-def _execute_commands(connection, prompt, hostname, args, poutput, device):
+def _execute_commands(connection, prompt, args, exec_commands):
     """
     指定されたコマンド（単発 or コマンドリスト）を実行し、出力を返すラッパー関数。
 
@@ -270,7 +262,7 @@ def _execute_commands(connection, prompt, hostname, args, poutput, device):
     if args.command:
         return _execute_command(connection, prompt, args.command)
     elif args.commands_list:
-        return _execute_commands_list(connection, prompt, hostname, args, poutput, device)
+        return _execute_commands_list(connection, prompt, exec_commands)
     else:
         raise ValueError("command または commands_list のいずれかが必要ケロ🐸")
 
@@ -354,9 +346,11 @@ def _handle_execution(device: dict, args, poutput, hostname_for_log):
     """
 
     # ✅ 1. commands-list の存在チェック（必要なら）
+    exec_commands = None # args.commandのとき未定義になるため必要。
+
     try:
         if args.commands_list:
-            validate_commands_list(args, device)
+            exec_commands = validate_commands_list(args, device)
     except (FileNotFoundError, ValueError):
         return
 
@@ -371,7 +365,7 @@ def _handle_execution(device: dict, args, poutput, hostname_for_log):
 
     # ✅ 3. コマンド実行（単発 or リスト）
     try:
-        result_output_string = _execute_commands(connection, prompt, hostname, args, poutput, device)
+        result_output_string = _execute_commands(connection, prompt, args, exec_commands)
     except (KeyError, ValueError) as e:
         print_error(str(e))
         connection.disconnect()
