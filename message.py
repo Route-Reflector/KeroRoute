@@ -2,16 +2,13 @@ from rich.console import Console
 from rich.panel import Panel
 from datetime import datetime
 
-from utils import load_sys_config
-
 
 def get_style() -> str:
-        return load_sys_config().get("user_interface", {}).get("message_style", "plain")
+    from utils import load_sys_config
+    return load_sys_config().get("user_interface", {}).get("message_style", "plain")
 
 
-style = get_style()
 _console = Console()
-
 
 
 def _timestamp() -> str:
@@ -55,3 +52,4 @@ def ask(message: str) -> str:
     return input()
 
 
+style = get_style()

@@ -78,7 +78,7 @@ target_show.add_argument("--log-last", action="store_true", help=log_last_help)
 target_show.add_argument("--diff", nargs=2, metavar=("OLD_LOG", "NEW_LOG"), help=diff_help)
 
 
-def _show_hosts(poutput):
+def _show_hosts():
 
     yaml = YAML()
 
@@ -109,7 +109,7 @@ def _show_hosts(poutput):
     console.print(table)
     
 
-def _show_host(poutput, node):
+def _show_host(node):
     
     yaml = YAML()
     with open("inventory.yaml", "r") as host_list:
@@ -144,7 +144,7 @@ def _show_host(poutput, node):
         console.print(table)
 
 
-def _show_groups(poutput):
+def _show_groups():
     
     yaml = YAML()
     with open("inventory.yaml", "r") as inventory:
@@ -169,7 +169,7 @@ def _show_groups(poutput):
     console.print(table)
 
 
-def _show_group(poutput, group):
+def _show_group(group):
 
     yaml = YAML()
     with open("inventory.yaml", "r") as inventory:
@@ -213,7 +213,7 @@ def _show_group(poutput, group):
         console.print(table)
 
 
-def _show_commands_lists(poutput):
+def _show_commands_lists():
     yaml = YAML()
     with open("commands-lists.yaml", "r") as yaml_commands_lists:
         commands_lists = yaml.load(yaml_commands_lists)
@@ -245,7 +245,7 @@ def _show_commands_lists(poutput):
     console.print(table)
 
 
-def _show_commands_list(poutput, device_type, commands_list):
+def _show_commands_list(device_type, commands_list):
     yaml = YAML()
     with open("commands-lists.yaml", "r") as yaml_commands_lists:
         commands_lists = yaml.load(yaml_commands_lists)
@@ -274,12 +274,12 @@ def _show_commands_list(poutput, device_type, commands_list):
 
 
 
-def _show_logs(poutput, args):
+def _show_logs(args):
 
     console = Console()
     today_str = datetime.now().strftime("%Y%m%d")
 
-    if args.mode == "execute":
+    if args.mode in ("execute", "console", "configure"):
         log_mode_dir = Path("logs") / args.mode
     else: # 将来的に別のモードが必要になったときに実装予定。
         raise NotImplementedError(f"モード '{args.mode}' はまだ未対応ケロ🐸")
@@ -291,7 +291,7 @@ def _show_logs(poutput, args):
 # KeroRoute全体の設定ファイルが必要かも。ログの表示件数とか。
 
     if args.logs:
-        if args.mode == "execute":
+        if args.mode in ("execute", "console", "configure"):
             if args.date:
                 date_str = args.date
                 date_dir = log_mode_dir / date_str
@@ -344,34 +344,31 @@ def _show_logs(poutput, args):
                         console.print("ファイル数が多いから省略するケロ🐸\n")
 
 
-def _show_log(poutput, args):
+def _show_log(args):
     if args.log:
-        if args.mode == "execute":
+        if args.mode in ("execute", "console", "configure"):
             mode_dir = Path("logs") / args.mode  # e.g., logs/execute/
             target_dir = args.log[:8] # logファイルの最初の8文字を取得。
             log_path = mode_dir / target_dir / args.log       # e.g., logs/execute/20250508/filename.log
 
             if not log_path.exists():
-                print_error(poutput, f"{log_path} が存在しないケロ🐸")
+                print_error(f"{log_path} が存在しないケロ🐸")
                 return
 
             with open(log_path, "r") as f:
                 content = f.read()
-                # console = Console(force_terminal=True)
-                # console.pager(content) # richのpagerがうまく機能しない。
-            
+           
+            # Linuxのコマンドでlessを使用している  
             try:
                 subprocess.run(["less", "-R"], input=content.encode(), check=True)
             except Exception as e:
-                print_error(poutput, "less での表示に失敗したケロ🐸")
-                print_error(poutput, str(e))
+                print_error(f"less での表示に失敗したケロ🐸 {e}")
 
         else:
-            print_error(poutput, f"未対応のモードケロ🐸: {args.mode}")
-            # 将来的に実装
+            print_error(f"未対応のモードケロ🐸: {args.mode}")
 
 
-def _show_diff(poutput, args):
+def _show_diff(args):
 
     style = args.style
 
@@ -380,10 +377,10 @@ def _show_diff(poutput, args):
     log2_path = mode_dir / args.diff[1][:8] / args.diff[1]
     
     if not log1_path.exists():
-        print_error(poutput, f"{log1_path} が存在しないケロ🐸")
+        print_error(f"{log1_path} が存在しないケロ🐸")
         return
     if not log2_path.exists():
-        print_error(poutput, f"{log2_path} が存在しないケロ🐸")
+        print_error(f"{log2_path} が存在しないケロ🐸")
         return
 
     with open(log1_path, "r") as log_1, open(log2_path, "r") as log_2:
@@ -392,12 +389,12 @@ def _show_diff(poutput, args):
 
 
 
-    if args.mode == "execute":
+    if args.mode in ("execute", "console", "configure"):
         if style == "unified":
-            diff_lines = difflib.unified_diff(text_1, text_2,
+            diff_lines = list(difflib.unified_diff(text_1, text_2,
                                                 fromfile=args.diff[0],
                                                 tofile=args.diff[1],
-                                                lineterm="")
+                                                lineterm=""))
             console = Console()
             if diff_lines:
                 console.print("\n".join(diff_lines))
@@ -418,17 +415,17 @@ def _show_diff(poutput, args):
 
             try:
                 webbrowser.get("firefox").open(f"file://{html_path.resolve()}")
-                print_success(poutput, f"🦊 HTML差分ファイルをFirefoxで開いたケロ！: {html_path}")
+                print_success(f"🦊 HTML差分ファイルをFirefoxで開いたケロ！: {html_path}")
             except webbrowser.Error:
-                print_warning(poutput, "🚨 Firefoxが見つからなかったケロ！手動で開いてケロ🐸")            
+                print_warning("🚨 Firefoxが見つからなかったケロ！手動で開いてケロ🐸")            
         
             if not args.keep_html:
                 # 数秒待ってから削除（確実にブラウザが開いたあと）
                 time.sleep(3)
                 html_path.unlink()
-                print_info(poutput, "🧹 一時HTMLファイルは削除したケロ🐸")
+                print_info("🧹 一時HTMLファイルは削除したケロ🐸")
             else:
-                print_info(poutput, f"💾 一時HTMLファイルを保持したケロ🐸: {html_path}")
+                print_info(f"💾 一時HTMLファイルを保持したケロ🐸: {html_path}")
 
 
         elif style == "side-by-side":
@@ -436,30 +433,28 @@ def _show_diff(poutput, args):
             subprocess.run([diff_command, "-y", str(log1_path), str(log2_path)])
 
     else:
-        print_error(poutput, f"未対応のモードケロ🐸: {args.mode}")
+        print_error(f"未対応のモードケロ🐸: {args.mode}")
 
 
 
 @cmd2.with_argparser(show_parser)
 def do_show(self, args):
     if args.diff:
-        _show_diff(self.poutput, args)
+        _show_diff(args)
     elif args.hosts:
-        _show_hosts(self.poutput)
+        _show_hosts()
     elif args.host:
-        _show_host(self.poutput, args.host)
+        _show_host(args.host)
     elif args.groups:
-        _show_groups(self.poutput)
+        _show_groups()
     elif args.group:
-        _show_group(self.poutput, args.group)
+        _show_group(args.group)
     elif args.commands_lists:
-        _show_commands_lists(self.poutput)
+        _show_commands_lists()
     elif args.commands_list:
         device_type, commands_list = args.commands_list
-        _show_commands_list(self.poutput, device_type, commands_list)
+        _show_commands_list(device_type, commands_list)
     elif args.logs:
-        _show_logs(self.poutput, args)
+        _show_logs(args)
     elif args.log:
-        _show_log(self.poutput, args)
-
-
+        _show_log(args)
