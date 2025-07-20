@@ -279,7 +279,7 @@ def _show_logs(poutput, args):
     console = Console()
     today_str = datetime.now().strftime("%Y%m%d")
 
-    if args.mode == "execute":
+    if args.mode in ("execute", "console", "configure"):
         log_mode_dir = Path("logs") / args.mode
     else: # 将来的に別のモードが必要になったときに実装予定。
         raise NotImplementedError(f"モード '{args.mode}' はまだ未対応ケロ🐸")
@@ -291,7 +291,7 @@ def _show_logs(poutput, args):
 # KeroRoute全体の設定ファイルが必要かも。ログの表示件数とか。
 
     if args.logs:
-        if args.mode == "execute":
+        if args.mode in ("execute", "console", "configure"):
             if args.date:
                 date_str = args.date
                 date_dir = log_mode_dir / date_str
@@ -346,7 +346,7 @@ def _show_logs(poutput, args):
 
 def _show_log(poutput, args):
     if args.log:
-        if args.mode == "execute":
+        if args.mode in ("execute", "console", "configure"):
             mode_dir = Path("logs") / args.mode  # e.g., logs/execute/
             target_dir = args.log[:8] # logファイルの最初の8文字を取得。
             log_path = mode_dir / target_dir / args.log       # e.g., logs/execute/20250508/filename.log
@@ -357,9 +357,8 @@ def _show_log(poutput, args):
 
             with open(log_path, "r") as f:
                 content = f.read()
-                # console = Console(force_terminal=True)
-                # console.pager(content) # richのpagerがうまく機能しない。
-            
+           
+            # Linuxのコマンドでlessを使用している  
             try:
                 subprocess.run(["less", "-R"], input=content.encode(), check=True)
             except Exception as e:
@@ -368,7 +367,6 @@ def _show_log(poutput, args):
 
         else:
             print_error(poutput, f"未対応のモードケロ🐸: {args.mode}")
-            # 将来的に実装
 
 
 def _show_diff(poutput, args):
@@ -392,7 +390,7 @@ def _show_diff(poutput, args):
 
 
 
-    if args.mode == "execute":
+    if args.mode in ("execute", "console", "configure"):
         if style == "unified":
             diff_lines = difflib.unified_diff(text_1, text_2,
                                                 fromfile=args.diff[0],
