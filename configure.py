@@ -5,7 +5,7 @@ from ruamel.yaml import YAML
 from message import print_info, print_success, print_warning, print_error
 from executor import _load_and_validate_inventory, _build_device_and_hostname, _connect_to_device, _get_prompt, _save_log, _default_workers
 from concurrent.futures import ThreadPoolExecutor, as_completed
-
+from utils import ensure_enable_mode
 
 ######################
 ###  HELP_SECTION  ### 
@@ -121,26 +121,9 @@ def apply_config_list(connection, hostname, args, device):
             print_error(msg)
             raise KeyError(msg)
 
-        ### ここに以下の流れを追加。
-        
-        # 1. find_promptを利用して現在の状況を確認
-        prompt = connection.find_prompt()
-
-        # 2. set_base_prompt
-        connection.set_base_prompt()
-
-        # 3. check_enable_mode()             # 4. enable()
-        if not connection.check_enable_mode():
-            try: 
-                connection.enable()
-            except Exception as e:
-                msg = f"Enableモードに移行できなかったケロ🐸 {e}"
-                print_error(msg)
-                raise ValueError(msg)
-
         result_output_string = connection.send_config_set(configure_commands, strip_prompt=False, strip_command=False)
-        
         return result_output_string
+
     else:
         raise ValueError("config_listが必要ケロ🐸")
 
@@ -155,23 +138,23 @@ def _handle_configure(device: dict, args, poutput, hostname):
         poutput: cmd2 の出力関数
         hostname (str): ログファイル名などに使うホスト識別子
     """
-    # ✅ 1. config-list の存在チェック（必要なら）
-    try:
-        if args.config_list:
-            validate_config_list(args, device)
-    except (FileNotFoundError, ValueError):
-        return
     
-    # ✅ 2. 接続とプロンプト取得
+    # ✅ 1. 接続とプロンプト取得
     try:
         connection = _connect_to_device(device, hostname)
         print_success(f"NODE: {hostname} 🔗接続成功ケロ🐸")
-        prompt, hostname = _get_prompt(connection)
+        try:  
+            ensure_enable_mode(connection)        
+            prompt, hostname = _get_prompt(connection)
+        except ValueError:
+            connection.disconnect()
+            return
     except ConnectionError as e:
         print_error(str(e))
         return
     
-    # ✅ 3. 設定変更（config-list）
+    
+    # ✅ 2. 設定変更（config-list）
     try:
         result_output_string = apply_config_list(connection, hostname, args, device)
     except (KeyError, ValueError) as e:
@@ -179,14 +162,14 @@ def _handle_configure(device: dict, args, poutput, hostname):
         connection.disconnect()
         return
 
-    # ✅ 4. 接続終了
+    # ✅ 3. 接続終了
     connection.disconnect()
 
-    # ✅ 5. ログ保存（--log指定時のみ）
+    # ✅ 4. ログ保存（--log指定時のみ）
     if args.log:
         _save_log(result_output_string, hostname, args, mode="configure")
 
-    # ✅ 6. 結果表示
+    # ✅ 5. 結果表示
     print_info(f"NODE: {hostname} 📄OUTPUTケロ🐸")
     poutput(result_output_string)
     print_success(f"NODE: {hostname} 🔚実行完了ケロ🐸")

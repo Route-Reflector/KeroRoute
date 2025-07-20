@@ -6,7 +6,7 @@ from netmiko.exceptions import NetMikoTimeoutException, NetMikoAuthenticationExc
 import cmd2
 from ruamel.yaml import YAML
 from message import print_info, print_success, print_warning, print_error
-from utils import sanitize_filename_for_log, load_sys_config
+from utils import sanitize_filename_for_log, load_sys_config, ensure_enable_mode
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import re
 
@@ -158,7 +158,12 @@ def _connect_to_device(device: dict, hostname_for_log:str):
     # TODO: 将来的にはdevice_typeでCisco以外の他機種にも対応。
     try:   
         connection = ConnectHandler(**device)
-        return connection
+        try: 
+            ensure_enable_mode(connection)
+            return connection
+        except ValueError as e:
+            connection.disconnect()
+            raise ConnectionError(f"[{hostname_for_log}] Enableモードに移行できなかったケロ🐸 Secretが間違ってないケロ？ {e}")
     except NetMikoTimeoutException:
         raise ConnectionError(f"[{hostname_for_log}] タイムアウトしたケロ🐸 接続先がオフラインかも")
     except NetMikoAuthenticationException:
