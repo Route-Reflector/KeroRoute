@@ -6,7 +6,7 @@ from netmiko.exceptions import NetMikoTimeoutException, NetMikoAuthenticationExc
 import cmd2
 from ruamel.yaml import YAML
 from message import print_info, print_success, print_warning, print_error
-from utils import sanitize_filename_for_log, load_sys_config
+from utils import sanitize_filename_for_log, load_sys_config, ensure_enable_mode
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import re
 
@@ -28,8 +28,8 @@ command_help = "1つのコマンドを直接指定して実行します。"
 command_list_help = "コマンドリスト名（commands-lists.yamlに定義）を指定して実行します。" \
                     "device_typeはホストから自動で選択されます。"
 
-username_help = "SSH接続に使用するユーザー名を指定します。省略時はinventory.yamlの値を使用します。"
-password_help = "SSH接続に使用するパスワードを指定します。省略時はinventory.yamlの値を使用します。"
+username_help = "SSH接続に使用するユーザー名を指定します。--ip専用。--host|--group指定時はinventory.yamlの値を使用します。"
+password_help = "SSH接続に使用するパスワードを指定します。--ip専用。--host|--group指定時はinventory.yamlの値を使用します。"
 device_type_help = "Netmikoにおけるデバイスタイプを指定します（例: cisco_ios）。省略時は 'cisco_ios' です。"
 port_help = "SSH接続に使用するポート番号を指定します（デフォルト: 22）"
 timeout_help = "SSH接続のタイムアウト秒数を指定します（デフォルト: 10秒）"
@@ -44,7 +44,8 @@ memo_help = ("ログファイル名に付加する任意のメモ（文字列）
 workers_help = ("並列実行するワーカースレッド数を指定します。\n"
                 "指定しない場合は sys_config.yaml の executor.default_workers を参照します。\n"
                 "そこにも設定が無いときは、グループ台数と 規定上限(DEFAULT_MAX_WORKERS) の小さい方が自動で採用されます。")
-
+secret_help = ("enable に入るための secret を指定します。(省略時は password を流用します。)\n"
+               "--ip専用。--host|--group指定時はinventory.yamlの値を使用します。")
 
 
 ######################
@@ -60,6 +61,7 @@ netmiko_execute_parser.add_argument("-t", "--timeout", type=int, default=10, hel
 netmiko_execute_parser.add_argument("-l", "--log", action="store_true", help=log_help)
 netmiko_execute_parser.add_argument("-m", "--memo", type=str, default="", help=memo_help)
 netmiko_execute_parser.add_argument("-w", "--workers", type=int, default=None, metavar="N", help=workers_help)
+netmiko_execute_parser.add_argument("-s", "--secret", type=str, default="", help=secret_help)
 
 # mutually exclusive
 target_node = netmiko_execute_parser.add_mutually_exclusive_group(required=True)
@@ -118,7 +120,8 @@ def validate_commands_list(args, device):
             print_error(msg)
             raise ValueError(msg)
     
-    return commands_lists_data
+    exec_commands = commands_lists_data["commands_lists"][device["device_type"]][f"{args.commands_list}"]["commands_list"]
+    return exec_commands
 
 
 def _connect_to_device(device: dict, hostname_for_log:str):
@@ -155,7 +158,12 @@ def _connect_to_device(device: dict, hostname_for_log:str):
     # TODO: 将来的にはdevice_typeでCisco以外の他機種にも対応。
     try:   
         connection = ConnectHandler(**device)
-        return connection
+        try: 
+            ensure_enable_mode(connection)
+            return connection
+        except ValueError as e:
+            connection.disconnect()
+            raise ConnectionError(f"[{hostname_for_log}] Enableモードに移行できなかったケロ🐸 Secretが間違ってないケロ？ {e}")
     except NetMikoTimeoutException:
         raise ConnectionError(f"[{hostname_for_log}] タイムアウトしたケロ🐸 接続先がオフラインかも")
     except NetMikoAuthenticationException:
@@ -197,7 +205,7 @@ def _execute_command(connection, prompt, command):
 
     return full_output
 
-def _execute_commands_list(connection, prompt, hostname_for_log, args, device):
+def _execute_commands_list(connection, prompt, exec_commands):
     """
     commands-lists.yaml で定義された「コマンドリスト」を順次実行する。
 
@@ -228,15 +236,6 @@ def _execute_commands_list(connection, prompt, hostname_for_log, args, device):
     KeyError
         YAML 構造が想定外だった場合
     """
-
-    try:
-        commands_lists_data = validate_commands_list(args, device)
-        exec_commands = commands_lists_data["commands_lists"][device["device_type"]][f"{args.commands_list}"]["commands_list"]
-    except Exception as e:
-        msg = f"[{hostname_for_log}] commands-lists.yamlの構造がおかしいケロ🐸 詳細: {e}"
-        print_error(msg)
-        raise KeyError(msg)
-
     full_output_list = []
 
     for command in exec_commands:
@@ -247,7 +246,7 @@ def _execute_commands_list(connection, prompt, hostname_for_log, args, device):
     return "\n".join(full_output_list)
 
 
-def _execute_commands(connection, prompt, hostname, args, poutput, device):
+def _execute_commands(connection, prompt, args, exec_commands):
     """
     指定されたコマンド（単発 or コマンドリスト）を実行し、出力を返すラッパー関数。
 
@@ -268,7 +267,7 @@ def _execute_commands(connection, prompt, hostname, args, poutput, device):
     if args.command:
         return _execute_command(connection, prompt, args.command)
     elif args.commands_list:
-        return _execute_commands_list(connection, prompt, hostname, args, poutput, device)
+        return _execute_commands_list(connection, prompt, exec_commands)
     else:
         raise ValueError("command または commands_list のいずれかが必要ケロ🐸")
 
@@ -352,9 +351,11 @@ def _handle_execution(device: dict, args, poutput, hostname_for_log):
     """
 
     # ✅ 1. commands-list の存在チェック（必要なら）
+    exec_commands = None # args.commandのとき未定義になるため必要。
+
     try:
         if args.commands_list:
-            validate_commands_list(args, device)
+            exec_commands = validate_commands_list(args, device)
     except (FileNotFoundError, ValueError):
         return
 
@@ -369,7 +370,7 @@ def _handle_execution(device: dict, args, poutput, hostname_for_log):
 
     # ✅ 3. コマンド実行（単発 or リスト）
     try:
-        result_output_string = _execute_commands(connection, prompt, hostname, args, poutput, device)
+        result_output_string = _execute_commands(connection, prompt, args, exec_commands)
     except (KeyError, ValueError) as e:
         print_error(str(e))
         connection.disconnect()
@@ -451,6 +452,7 @@ def _build_device_from_ip(args):
         "ip": args.ip,
         "username": args.username,
         "password": args.password,
+        "secret": args.secret or args.password,
         "port": args.port,
         "timeout": args.timeout
         }
@@ -480,6 +482,7 @@ def _build_device_from_host(args, inventory_data):
         "ip": node_info["ip"],
         "username": node_info["username"],
         "password": node_info["password"],
+        "secret": node_info["secret"] or node_info["password"],
         "port": node_info["port"],
         "timeout": node_info["timeout"] 
         }
@@ -513,6 +516,7 @@ def _build_device_from_group(args, inventory_data):
             "ip": node_info["ip"],
             "username": node_info["username"],
             "password": node_info["password"],
+            "secret": node_info["secret"] or node_info["password"],
             "port": node_info["port"],
             "timeout": node_info["timeout"] 
             } 

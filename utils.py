@@ -3,7 +3,11 @@ import ipaddress
 from ruamel.yaml import YAML
 from pathlib import Path
 
+from netmiko import BaseConnection
+
 import time
+
+from message import print_error
 
 from rich.box import ROUNDED, SQUARE, DOUBLE
 
@@ -117,3 +121,19 @@ def wait_for_prompt_returned(connection, sleep_time=0.1, max_retry=3):
                 print_error(msg)
                 # 必要なら元例外を連結しても良い
                 raise ValueError(msg) from e
+
+
+def ensure_enable_mode(connection: BaseConnection):    
+    """
+    connection が必ず enable (#) モードになるよう保証する。
+    失敗したら EnableModeError を投げる。
+    """
+    if not connection.check_enable_mode():
+        try: 
+            connection.enable()
+        except Exception as e:
+            msg = f"Enableモードに移行できなかったケロ🐸 {e}"
+            print_error(msg)
+            raise ValueError(msg)
+    
+    connection.set_base_prompt()
