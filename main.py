@@ -35,6 +35,6 @@ KeroRoute.do_show = show.do_show
 
 
 if __name__ == "__main__":
-    cli = KeroRoute()
+    cli = KeroRoute(suggest_similar_command=True)
     cli.initial_message()
     cli.cmdloop()
