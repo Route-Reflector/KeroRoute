@@ -6,7 +6,8 @@ from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from message import print_info, print_success, print_warning, print_error
-from executor import _build_device_and_hostname, _load_and_validate_inventory, _connect_to_device, _get_prompt, _default_workers
+from executor import _load_and_validate_inventory, _connect_to_device, _get_prompt, _default_workers
+from build_device import _build_device_and_hostname
 
 from output_logging import _save_log
 
