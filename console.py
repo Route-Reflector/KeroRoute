@@ -9,7 +9,8 @@ from netmiko.utilities import check_serial_port
 from netmiko import ConnectHandler
 
 from message import print_error, print_info, print_warning, print_success
-from executor import _load_and_validate_inventory, validate_commands_list, _save_log
+from executor import _load_and_validate_inventory, validate_commands_list
+from output_logging import _save_log
 from utils import wait_for_prompt_returned
 
 from rich.console import Console

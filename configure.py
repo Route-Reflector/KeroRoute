@@ -3,7 +3,8 @@ from pathlib import Path
 import cmd2
 from ruamel.yaml import YAML
 from message import print_info, print_success, print_warning, print_error
-from executor import _load_and_validate_inventory, _build_device_and_hostname, _connect_to_device, _get_prompt, _save_log, _default_workers
+from executor import _load_and_validate_inventory, _build_device_and_hostname, _connect_to_device, _get_prompt, _default_workers
+from output_logging import _save_log
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from utils import ensure_enable_mode
 
