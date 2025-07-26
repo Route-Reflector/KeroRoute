@@ -1,8 +1,5 @@
 import argparse
 import cmd2
-import time
-from datetime import datetime
-from pathlib import Path
 import re
 
 from netmiko.utilities import check_serial_port
