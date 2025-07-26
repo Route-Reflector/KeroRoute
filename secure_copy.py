@@ -6,7 +6,8 @@ from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from message import print_info, print_success, print_warning, print_error
-from executor import _load_and_validate_inventory, _connect_to_device, _get_prompt, _default_workers
+from executor import _connect_to_device, _get_prompt, _default_workers
+from load_and_validate_yaml import get_validated_inventory_data
 from build_device import _build_device_and_hostname
 
 from output_logging import _save_log
@@ -162,7 +163,7 @@ def do_scp(self, args):
 
     if args.host or args.group: 
         try:
-            inventory_data = _load_and_validate_inventory(host=args.host, group=args.group)
+            inventory_data = get_validated_inventory_data(host=args.host, group=args.group)
         
         except (FileNotFoundError, ValueError) as e:
             print_error(str(e))

@@ -10,10 +10,14 @@ import show
 
 from message import print_info
 
+from load_and_validate_yaml import load_sys_config
+
 """
 cmd2のコマンドライン引数はすべて文字列型となるため、注意が必要。
 たとえば、Trueと入力しても実際には"True"となるため型変換が必要。
 """
+
+sys_config_cache = load_sys_config()
 
 class KeroRoute(cmd2.Cmd):
     # prompt = "🐸\033[92mKeroRoute> \033[0m"
