@@ -318,10 +318,22 @@ def _save_log(result_output_string: str, hostname: str, args, mode: str = "execu
 
         if mode == "configure":
             sanitized_command = sanitize_filename_for_log(args.config_list)
-        elif args.command:
-            sanitized_command = sanitize_filename_for_log(args.command)
-        elif args.commands_list:
-            sanitized_command = sanitize_filename_for_log(args.commands_list)
+        elif mode == "scp":        
+            scp_file_name = Path(args.src).name
+            if args.put:
+                sanitized_command = sanitize_filename_for_log(f"SCP_PUT_{scp_file_name}")
+            elif args.get:
+                sanitized_command = sanitize_filename_for_log(f"SCP_GET_{scp_file_name}")
+        elif getattr(args, args.command, None):
+            if mode == "console":
+                sanitized_command = sanitize_filename_for_log(f"{args.command}_by_console")
+            else:
+                sanitized_command = sanitize_filename_for_log(args.command)
+        elif getattr(args, args.commands_list, None):
+            if mode == "console":
+                sanitized_command = sanitize_filename_for_log(f"{args.commands_list}_by_console")
+            else:
+                sanitized_command = sanitize_filename_for_log(args.commands_list)
         else:
             raise ValueError("args.command または args.commands_list のどちらかが必須ケロ！🐸")
 
@@ -634,7 +646,7 @@ def do_execute(self, args):
             inventory_data = _load_and_validate_inventory(host=args.host, group=args.group)
         
         except (FileNotFoundError, ValueError) as e:
-            print_error(self.poutput, str(e))
+            print_error(str(e))
             return
         
     

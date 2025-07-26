@@ -25,6 +25,8 @@ tmp/
 inventory.yaml
 commands-lists.yaml
 config-lists.yaml
+bigfile.txt
+put-test.text
 
 # Editor/IDE settings
 .vscode/
