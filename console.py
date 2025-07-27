@@ -6,7 +6,7 @@ from netmiko.utilities import check_serial_port
 from netmiko import ConnectHandler
 
 from message import print_error, print_info, print_warning, print_success
-from executor import _load_and_validate_inventory, validate_commands_list
+from load_and_validate_yaml import get_validated_inventory_data, get_validated_commands_list
 from output_logging import _save_log
 from build_device import _build_device_and_hostname
 from utils import wait_for_prompt_returned
@@ -107,7 +107,7 @@ def do_console(self, args):
         # ✅ inventory.yaml の存在チェックと --host の妥当性確認
         # ※ 接続前なので try/except で安全に中断する
         try:
-            inventory_data = _load_and_validate_inventory(host=args.host)
+            inventory_data = get_validated_inventory_data(host=args.host)
         except (FileNotFoundError, ValueError) as e:
             print_error(str(e))
             return
@@ -163,7 +163,7 @@ def do_console(self, args):
     # execute_commands_listと違う部分はhostname_for_log -> hostname send_commandでdelay_factorを渡している。あとは一緒。
     elif args.commands_list:
         try:
-            commands_lists_data = validate_commands_list(args, device)
+            commands_lists_data = get_validated_commands_list(args, device)
             exec_commands = commands_lists_data["commands_lists"][device["device_type"]][f"{args.commands_list}"]["commands_list"]
         except Exception as e:
             msg = f"[{hostname}] commands-lists.yamlの構造がおかしいケロ🐸 詳細: {e}"

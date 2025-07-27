@@ -11,6 +11,7 @@ import re
 
 from output_logging import _save_log
 from build_device import _build_device_and_hostname
+from load_and_validate_yaml import get_validated_commands_list, get_validated_inventory_data
 
 
 #######################
@@ -76,54 +77,54 @@ target_command.add_argument("-c", "--command", type=str, default="", help=comman
 target_command.add_argument("-L", "--commands-list", type=str, default="", help=command_list_help)
 
 
-def validate_commands_list(args, device):
-    """
-    commands-lists.yaml に基づいて、指定されたコマンドリストの存在を検証する。
+# def validate_commands_list(args, device):
+#     """
+#     commands-lists.yaml に基づいて、指定されたコマンドリストの存在を検証する。
 
-    Args:
-        args: argparse.Namespace - コマンドライン引数
-        device: dict - 接続対象のデバイス情報（device_type含む）
+#     Args:
+#         args: argparse.Namespace - コマンドライン引数
+#         device: dict - 接続対象のデバイス情報（device_type含む）
 
-    Returns:
-        commands_lists_data
+#     Returns:
+#         commands_lists_data
 
-    Raises:
-        FileNotFoundError: commands-lists.yaml が存在しない場合
-        ValueError: device_type または commands_list が未定義の場合
-    """
+#     Raises:
+#         FileNotFoundError: commands-lists.yaml が存在しない場合
+#         ValueError: device_type または commands_list が未定義の場合
+#     """
 
-    # ✅ commands-listが指定されている場合は先に存在チェック
+#     # ✅ commands-listが指定されている場合は先に存在チェック
 
-    if not args.commands_list:
-        msg = "-L or --commands_list が指定されていないケロ🐸"
-        print_error(msg)
-        raise ValueError(msg)
+#     if not args.commands_list:
+#         msg = "-L or --commands_list が指定されていないケロ🐸"
+#         print_error(msg)
+#         raise ValueError(msg)
 
-    if args.commands_list:
-        commands_lists_path = Path("commands-lists.yaml")
-        if not commands_lists_path.exists():
-            msg = "commands-lists.yaml が見つからないケロ🐸"
-            print_error(msg)
-            raise FileNotFoundError(msg)
+#     if args.commands_list:
+#         commands_lists_path = Path("commands-lists.yaml")
+#         if not commands_lists_path.exists():
+#             msg = "commands-lists.yaml が見つからないケロ🐸"
+#             print_error(msg)
+#             raise FileNotFoundError(msg)
 
-        yaml = YAML()
-        with commands_lists_path.open("r") as f:
-            commands_lists_data = yaml.load(f)
+#         yaml = YAML()
+#         with commands_lists_path.open("r") as f:
+#             commands_lists_data = yaml.load(f)
 
-        device_type = device["device_type"]
+#         device_type = device["device_type"]
 
-        if device_type not in commands_lists_data["commands_lists"]:
-            msg = f"デバイスタイプ '{device_type}' はcommands-lists.yamlに存在しないケロ🐸"
-            print_error(msg)
-            raise ValueError(msg)
+#         if device_type not in commands_lists_data["commands_lists"]:
+#             msg = f"デバイスタイプ '{device_type}' はcommands-lists.yamlに存在しないケロ🐸"
+#             print_error(msg)
+#             raise ValueError(msg)
 
-        if args.commands_list not in commands_lists_data["commands_lists"][device_type]:
-            msg = f"コマンドリスト '{args.commands_list}' はcommands-lists.yamlに存在しないケロ🐸"
-            print_error(msg)
-            raise ValueError(msg)
+#         if args.commands_list not in commands_lists_data["commands_lists"][device_type]:
+#             msg = f"コマンドリスト '{args.commands_list}' はcommands-lists.yamlに存在しないケロ🐸"
+#             print_error(msg)
+#             raise ValueError(msg)
     
-    exec_commands = commands_lists_data["commands_lists"][device["device_type"]][f"{args.commands_list}"]["commands_list"]
-    return exec_commands
+#     exec_commands = commands_lists_data["commands_lists"][device["device_type"]][f"{args.commands_list}"]["commands_list"]
+#     return exec_commands
 
 
 def _connect_to_device(device: dict, hostname_for_log:str):
@@ -295,7 +296,7 @@ def _handle_execution(device: dict, args, poutput, hostname_for_log):
 
     try:
         if args.commands_list:
-            exec_commands = validate_commands_list(args, device)
+            exec_commands = get_validated_commands_list(args, device)
     except (FileNotFoundError, ValueError):
         return
 
@@ -329,49 +330,49 @@ def _handle_execution(device: dict, args, poutput, hostname_for_log):
     print_success(f"NODE: {hostname_for_log} 🔚実行完了ケロ🐸")
 
 
-def _load_and_validate_inventory(host=None, group=None):
-    """
-    inventory.yaml を読み込み、指定されたホストまたはグループの存在を検証する。
+# def _load_and_validate_inventory(host=None, group=None):
+#     """
+#     inventory.yaml を読み込み、指定されたホストまたはグループの存在を検証する。
 
-    Parameters
-    ----------
-    host : str, optional
-        inventory.yaml 内のホスト名。指定されている場合は存在を検証する。
-    group : str, optional
-        inventory.yaml 内のグループ名。指定されている場合は存在を検証する。
+#     Parameters
+#     ----------
+#     host : str, optional
+#         inventory.yaml 内のホスト名。指定されている場合は存在を検証する。
+#     group : str, optional
+#         inventory.yaml 内のグループ名。指定されている場合は存在を検証する。
 
-    Returns
-    -------
-    dict
-        パース済みの inventory データ。
+#     Returns
+#     -------
+#     dict
+#         パース済みの inventory データ。
 
-    Raises
-    ------
-    FileNotFoundError
-        inventory.yaml が見つからない場合。
-    ValueError
-        指定された host または group が inventory.yaml に存在しない場合。
-    """
+#     Raises
+#     ------
+#     FileNotFoundError
+#         inventory.yaml が見つからない場合。
+#     ValueError
+#         指定された host または group が inventory.yaml に存在しない場合。
+#     """
 
-    inventory_path = Path("inventory.yaml")
-    if not inventory_path.exists():
-        raise FileNotFoundError("inventory.yamlが存在しないケロ🐸")
+#     inventory_path = Path("inventory.yaml")
+#     if not inventory_path.exists():
+#         raise FileNotFoundError("inventory.yamlが存在しないケロ🐸")
 
-    yaml = YAML()
-    with open(inventory_path, "r") as inventory:
-        inventory_data = yaml.load(inventory)
+#     yaml = YAML()
+#     with open(inventory_path, "r") as inventory:
+#         inventory_data = yaml.load(inventory)
 
-    if host and host not in inventory_data["all"]["hosts"]:
-            msg = f"ホスト '{host}' はinventory.yamlに存在しないケロ🐸"
-            print_error(msg)
-            raise ValueError(msg)
+#     if host and host not in inventory_data["all"]["hosts"]:
+#             msg = f"ホスト '{host}' はinventory.yamlに存在しないケロ🐸"
+#             print_error(msg)
+#             raise ValueError(msg)
 
-    elif group and group not in inventory_data["all"]["groups"]:
-            msg = f"グループ '{group}' はinventory.yamlに存在しないケロ🐸"
-            print_error(msg)
-            raise ValueError(msg)
+#     elif group and group not in inventory_data["all"]["groups"]:
+#             msg = f"グループ '{group}' はinventory.yamlに存在しないケロ🐸"
+#             print_error(msg)
+#             raise ValueError(msg)
     
-    return inventory_data
+#     return inventory_data
     
 
 def _default_workers(group_size: int, args) -> int:
@@ -456,7 +457,7 @@ def do_execute(self, args):
 
     if args.host or args.group: 
         try:
-            inventory_data = _load_and_validate_inventory(host=args.host, group=args.group)
+            inventory_data = get_validated_inventory_data(host=args.host, group=args.group)
         
         except (FileNotFoundError, ValueError) as e:
             print_error(str(e))
