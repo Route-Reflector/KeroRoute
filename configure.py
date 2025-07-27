@@ -3,7 +3,8 @@ from pathlib import Path
 import cmd2
 from ruamel.yaml import YAML
 from message import print_info, print_success, print_warning, print_error
-from executor import _load_and_validate_inventory, _connect_to_device, _get_prompt, _default_workers
+from executor import _connect_to_device, _get_prompt, _default_workers
+from load_and_validate_yaml import get_validated_inventory_data, get_validate_config_list
 from output_logging import _save_log
 from build_device import _build_device_and_hostname
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -63,60 +64,60 @@ target_command.add_argument("-L", "--config-list", type=str, default="", help=co
 
 
 
-def validate_config_list(args, device):
-    """
-    config-lists.yaml に基づいて、指定されたコンフィグリストの存在を検証する。
+# def validate_config_list(args, device):
+#     """
+#     config-lists.yaml に基づいて、指定されたコンフィグリストの存在を検証する。
 
-    Args:
-        args: argparse.Namespace - コマンドライン引数
-        device: dict - 接続対象のデバイス情報（device_type含む）
+#     Args:
+#         args: argparse.Namespace - コマンドライン引数
+#         device: dict - 接続対象のデバイス情報（device_type含む）
 
-    Returns:
-        config_lists_data
+#     Returns:
+#         config_lists_data
 
-    Raises:
-        FileNotFoundError: config-lists.yaml が存在しない場合
-        ValueError: device_type または config_list が未定義の場合
-    """
+#     Raises:
+#         FileNotFoundError: config-lists.yaml が存在しない場合
+#         ValueError: device_type または config_list が未定義の場合
+#     """
 
-    # ✅ config-listが指定されている場合は先に存在チェック
+#     # ✅ config-listが指定されている場合は先に存在チェック
 
-    if not args.config_list:
-        msg = "-L or --config_list が指定されていないケロ🐸"
-        print_error(msg)
-        raise ValueError(msg)
+#     if not args.config_list:
+#         msg = "-L or --config_list が指定されていないケロ🐸"
+#         print_error(msg)
+#         raise ValueError(msg)
 
-    if args.config_list:
-        config_lists_path = Path("config-lists.yaml")
-        if not config_lists_path.exists():
-            msg = "config-lists.yaml が見つからないケロ🐸"
-            print_error(msg)
-            raise FileNotFoundError(msg)
+#     if args.config_list:
+#         config_lists_path = Path("config-lists.yaml")
+#         if not config_lists_path.exists():
+#             msg = "config-lists.yaml が見つからないケロ🐸"
+#             print_error(msg)
+#             raise FileNotFoundError(msg)
 
-        yaml = YAML()
-        with config_lists_path.open("r") as f:
-            config_lists_data = yaml.load(f)
+#         yaml = YAML()
+#         with config_lists_path.open("r") as f:
+#             config_lists_data = yaml.load(f)
 
-        device_type = device["device_type"]
+#         device_type = device["device_type"]
 
-        if device_type not in config_lists_data["config_lists"]:
-            msg = f"デバイスタイプ '{device_type}' はconfig-lists.yamlに存在しないケロ🐸"
-            print_error(msg)
-            raise ValueError(msg)
+#         if device_type not in config_lists_data["config_lists"]:
+#             msg = f"デバイスタイプ '{device_type}' はconfig-lists.yamlに存在しないケロ🐸"
+#             print_error(msg)
+#             raise ValueError(msg)
 
-        if args.config_list not in config_lists_data["config_lists"][device_type]:
-            msg = f"コマンドリスト '{args.config_list}' はconfig-lists.yamlに存在しないケロ🐸"
-            print_error(msg)
-            raise ValueError(msg)
+#         if args.config_list not in config_lists_data["config_lists"][device_type]:
+#             msg = f"コマンドリスト '{args.config_list}' はconfig-lists.yamlに存在しないケロ🐸"
+#             print_error(msg)
+#             raise ValueError(msg)
     
-    return config_lists_data
+#     return config_lists_data
 
 
 def apply_config_list(connection, hostname, args, device):
 
     if args.config_list:
         try:
-            config_lists_data = validate_config_list(args, device)
+            config_lists_data = get_validate_config_list(args, device)
             configure_commands = config_lists_data["config_lists"][device["device_type"]][f"{args.config_list}"]["config_list"]
         except Exception as e:
             msg = f"[{hostname}] config-lists.yamlの構造がおかしいケロ🐸 詳細: {e}"
@@ -187,7 +188,7 @@ def do_configure(self, args):
     
     elif args.host or args.group:
         try:
-            inventory_data = _load_and_validate_inventory(host=args.host, group=args.group)
+            inventory_data = get_validated_inventory_data(host=args.host, group=args.group)
         
         except (FileNotFoundError, ValueError) as e:
             print_error(self.poutput, str(e))
