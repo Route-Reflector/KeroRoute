@@ -4,7 +4,7 @@ import cmd2
 from ruamel.yaml import YAML
 from message import print_info, print_success, print_warning, print_error
 from executor import _connect_to_device, _get_prompt, _default_workers
-from load_and_validate_yaml import get_validated_inventory_data, get_validate_config_list
+from load_and_validate_yaml import get_validated_inventory_data, get_validated_config_list
 from output_logging import _save_log
 from build_device import _build_device_and_hostname
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -117,7 +117,7 @@ def apply_config_list(connection, hostname, args, device):
 
     if args.config_list:
         try:
-            config_lists_data = get_validate_config_list(args, device)
+            config_lists_data = get_validated_config_list(args, device)
             configure_commands = config_lists_data["config_lists"][device["device_type"]][f"{args.config_list}"]["config_list"]
         except Exception as e:
             msg = f"[{hostname}] config-lists.yamlの構造がおかしいケロ🐸 詳細: {e}"

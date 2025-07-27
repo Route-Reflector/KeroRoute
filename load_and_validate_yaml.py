@@ -115,7 +115,7 @@ def get_validated_commands_list(args, device):
 
 
 
-def get_validate_config_list(args, device):
+def get_validated_config_list(args, device):
     """
     config-lists.yaml に基づいて、指定されたコンフィグリストの存在を検証する。
 
