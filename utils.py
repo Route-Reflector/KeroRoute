@@ -1,15 +1,9 @@
 import ipaddress
-from ruamel.yaml import YAML
-from pathlib import Path
-
 from netmiko import BaseConnection
-
 import time
-
 from message import print_error
-
 from rich.box import ROUNDED, SQUARE, DOUBLE
-
+from load_and_validate_yaml import load_sys_config
 
 BOX_MAP = {
     "ROUNDED": ROUNDED,

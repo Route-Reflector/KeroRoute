@@ -1,16 +1,15 @@
-# tests/test_utils.py
-
 import sys
 from pathlib import Path
 sys.path.append(str(Path(__file__).resolve().parent.parent))
 
-from utils import sanitize_filename_for_log, is_valid_ip
+from output_logging import sanitize_filename
+from utils import is_valid_ip
 
-def test_sanitize_filename_for_log():
-    assert sanitize_filename_for_log("test log.txt") == "test-log.txt"
-    assert sanitize_filename_for_log("foo/bar:baz") == "foo_bar_baz"
-    assert sanitize_filename_for_log('a?b*c"d<e>f|g') == 'a_b_c_d_e_f_g'
-    assert sanitize_filename_for_log("show ip int brief") == "show-ip-int-brief"
+def test_sanitize_filename():
+    assert sanitize_filename("test log.txt") == "test-log.txt"
+    assert sanitize_filename("foo/bar:baz") == "foo_bar_baz"
+    assert sanitize_filename('a?b*c"d<e>f|g') == 'a_b_c_d_e_f_g'
+    assert sanitize_filename("show ip int brief") == "show-ip-int-brief"
 
 def test_is_valid_ip():
     assert is_valid_ip("192.168.1.1") is True
