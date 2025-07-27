@@ -3,9 +3,9 @@ import sys
 from pathlib import Path
 sys.path.append(str(Path(__file__).resolve().parents[1]))
 from types import SimpleNamespace
-from executor import _build_device_from_ip
-from executor import _build_device_from_host
-from executor import _build_device_from_group
+from build_device import _build_device_from_ip
+from build_device import _build_device_from_host
+from build_device import _build_device_from_group
 
 
 def test_build_device_from_ip():
@@ -129,7 +129,7 @@ def test_build_device_from_group():
     }
 
 
-    device_list, hostname_for_log_list = _build_device_from_group(args, inventory_data)
+    device_list, hostname_list = _build_device_from_group(args, inventory_data)
 
     assert isinstance(device_list, list)
     assert isinstance(hostname_for_log_list, list)
@@ -141,6 +141,6 @@ def test_build_device_from_group():
     assert device_list[1]["ip"] == "192.168.10.11"
     assert device_list[1]["device_type"] == "cisco_ios"
 
-    assert hostname_for_log_list[0] == "R1"
-    assert hostname_for_log_list[3] == "R4"
+    assert hostname_list[0] == "R1"
+    assert hostname_list[3] == "R4"
 

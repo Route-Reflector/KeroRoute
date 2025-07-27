@@ -30,30 +30,30 @@ def do_ping(self, args):
     
     if args.log:
         #　ここにログを保存する処理。
-        print_info(self.poutput, "💾ログ保存モードONケロ🐸🔛")
+        print_info("💾ログ保存モードONケロ🐸🔛")
 
     try:
         result = subprocess.run(["ping", args.ip, "-c", str(args.count), "-s", str(args.size), "-t", str(args.ttl)], check=True)
         self.poutput(result.stdout)
 
     except subprocess.CalledProcessError:
-        print_error(self.poutput, "なんか失敗したケロロ.....🐸")
+        print_error("なんか失敗したケロロ.....🐸")
         return
 
-    print_success(self.poutput, "Pingの結果を確認するケロ🐸")
+    print_success("Pingの結果を確認するケロ🐸")
 
 
 def _do_ping_interactive(self) -> None:
 
     ip: str = ask("どのIP/ホストにpingするケロ？🐸")        
     if ip == "":
-        print_error(self.poutput, "IPアドレスは必須ケロ！🐸")
+        print_error("IPアドレスは必須ケロ！🐸")
         return
     else:
         try:
             ipaddress.IPv4Address(ip)
         except ipaddress.AddressValueError:
-            print_warning(self.poutput, "IPアドレス間違ってないケロ？🐸")
+            print_warning("IPアドレス間違ってないケロ？🐸")
             return
 
 
@@ -87,11 +87,11 @@ def _do_ping_interactive(self) -> None:
 
     if log.lower() == "yes":
         # TODO: ここにログを保存する処理。
-        print_info(self.poutput, "💾ログ保存モードONケロ🐸🔛")
+        print_info("💾ログ保存モードONケロ🐸🔛")
 
 
-    print_info(self.poutput, "ping実行中.....🐸💨")                  
+    print_info("ping実行中.....🐸💨")                  
     result =  subprocess.run(["ping", ip, "-c", str(repeat), "-s", str(packet_size), "-t", str(ttl)], check=True)
     self.poutput(result.stdout)
 
-    print_success(self.poutput, "実行終了ケロ。実行結果を確認するケロ🐸🔚")        
+    print_success("実行終了ケロ。実行結果を確認するケロ🐸🔚")        
