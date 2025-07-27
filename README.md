@@ -100,7 +100,11 @@ execute -i xx.xx.xx.xx -u username -p password -c "show ip int brief" --log --me
 ### ✅ version 0.x – 実装済み（開発中）
 
 - 🐸 execute コマンド (--host / --group / --log / --memo 対応)
+- 🌐 IPv6対応
 - 📦 コマンドリスト (YAML形式) による複数コマンド実行
+- 🧵 並列処理 (複数ホストへの同時接続 & 実行)
+- 🛠️ configure コマンド (YAMLから設定投入)
+- 🐸 console接続 (Netmikoによるシリアル対応)
 - 💾 ログ自動保存 (実行時刻 + ホスト名 + コマンド名 + メモ)
 - 📁 ログの自動日付ディレクトリ振り分け  
   - example: logs/2025-05-01/ログファイル名.log
@@ -110,12 +114,8 @@ execute -i xx.xx.xx.xx -u username -p password -c "show ip int brief" --log --me
 
 ### 🚧 version 1.0 - 実装予定 (実用レベルの安定版)
 
-- 🛠️ configure コマンド (YAMLから設定投入)
 - 🔐 GPGによる認証情報の暗号化・復号化
-- 🧵 並列処理 (複数ホストへの同時接続 & 実行)
 - 📊 プログレスバー表示
-- 🐸 console接続 (Netmikoによるシリアル対応)
-- 🌐 IPv6対応
 - 🚨 接続失敗やタイムアウト時のレポート (成功 / 失敗表示)
 - 🪜 多段SSH対応 (bastion経由で複数ホストを経由して接続)
 - 🧪 単体テスト/CI対応 (pytest) 
