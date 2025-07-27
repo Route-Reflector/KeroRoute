@@ -5,13 +5,13 @@ from netmiko.exceptions import NetMikoTimeoutException, NetMikoAuthenticationExc
 import cmd2
 from ruamel.yaml import YAML
 from message import print_info, print_success, print_warning, print_error
-from utils import load_sys_config, ensure_enable_mode
+from utils import ensure_enable_mode
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import re
 
 from output_logging import _save_log
 from build_device import _build_device_and_hostname
-from load_and_validate_yaml import get_validated_commands_list, get_validated_inventory_data
+from load_and_validate_yaml import load_sys_config, get_validated_commands_list, get_validated_inventory_data
 
 
 #######################

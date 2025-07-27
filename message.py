@@ -4,7 +4,7 @@ from datetime import datetime
 
 
 def get_style() -> str:
-    from utils import load_sys_config
+    from load_and_validate_yaml import load_sys_config
     return load_sys_config().get("user_interface", {}).get("message_style", "plain")
 
 
