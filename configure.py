@@ -1,15 +1,12 @@
 import argparse
-from pathlib import Path
 import cmd2
-from ruamel.yaml import YAML
 from message import print_info, print_success, print_warning, print_error
 from executor import _default_workers
-from prompt_utils import get_prompt
 from load_and_validate_yaml import get_validated_inventory_data, get_validated_config_list
 from output_logging import _save_log
 from build_device import _build_device_and_hostname
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from utils import ensure_enable_mode
+from prompt_utils import get_prompt, ensure_enable_mode
 from connect_device import connect_to_device
 
 

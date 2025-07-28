@@ -1,6 +1,6 @@
 from netmiko import ConnectHandler
 from netmiko.exceptions import NetMikoTimeoutException, NetMikoAuthenticationException
-from utils import ensure_enable_mode
+from prompt_utils import ensure_enable_mode
 
 
 def connect_to_device(device: dict, hostname:str):

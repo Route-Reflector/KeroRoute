@@ -41,5 +41,3 @@ def get_panel_theme():
     "title_align": sys_config_data["theme"]["panel"]["title_align"],
     "expand": sys_config_data["theme"]["panel"]["expand"]
     }
-
-
