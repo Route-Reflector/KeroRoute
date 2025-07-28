@@ -6,12 +6,13 @@ from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from message import print_info, print_success, print_warning, print_error
-from executor import _get_prompt, _default_workers
+from executor import _default_workers
 from load_and_validate_yaml import get_validated_inventory_data
 from build_device import _build_device_and_hostname
 
 from output_logging import _save_log
 from connect_device import connect_to_device
+from prompt_utils import get_prompt
 
 
 ######################
@@ -105,7 +106,7 @@ def _handle_scp(device, args, poutput, hostname):
     try:
         connection = connect_to_device(device, hostname)
         print_success(f"NODE: {hostname} 🔗接続成功ケロ🐸")
-        prompt, hostname = _get_prompt(connection)
+        prompt, hostname = get_prompt(connection)
     except ConnectionError as e:
         print_error(str(e))
         return

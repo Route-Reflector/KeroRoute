@@ -9,7 +9,7 @@ from netmiko import ConnectHandler
 from message import print_error, print_info, print_warning, print_success
 from load_and_validate_yaml import get_validated_inventory_data, get_validated_commands_list
 from output_logging import _save_log
-from utils import wait_for_prompt_returned
+from prompt_utils import wait_for_prompt_returned
 
 
 
@@ -204,7 +204,4 @@ def do_console(self, args):
     except Exception as e:
         msg = f"disconnectに失敗したケロ🐸 詳細: {e}"
         print_warning(msg)
-    
-
-
-
+ 
