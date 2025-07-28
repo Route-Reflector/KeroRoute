@@ -6,11 +6,12 @@ from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from message import print_info, print_success, print_warning, print_error
-from executor import _connect_to_device, _get_prompt, _default_workers
+from executor import _get_prompt, _default_workers
 from load_and_validate_yaml import get_validated_inventory_data
 from build_device import _build_device_and_hostname
 
 from output_logging import _save_log
+from connect_device import connect_to_device
 
 
 ######################
@@ -45,6 +46,7 @@ secret_help = ("enable に入るための secret を指定します。(省略時
 
 src_help = ("転送元のパスを指定します。")
 dest_help = ("転送先のパスを指定します。")
+
 
 ######################
 ### PARSER_SECTION ###
@@ -101,7 +103,7 @@ def _handle_scp(device, args, poutput, hostname):
     # ① SSH接続を確立
     # ✅ 2. 接続とプロンプト取得
     try:
-        connection = _connect_to_device(device, hostname)
+        connection = connect_to_device(device, hostname)
         print_success(f"NODE: {hostname} 🔗接続成功ケロ🐸")
         prompt, hostname = _get_prompt(connection)
     except ConnectionError as e:

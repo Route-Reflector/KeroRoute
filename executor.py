@@ -1,17 +1,15 @@
 import argparse
 from pathlib import Path
-from netmiko import ConnectHandler
-from netmiko.exceptions import NetMikoTimeoutException, NetMikoAuthenticationException
 import cmd2
 from ruamel.yaml import YAML
 from message import print_info, print_success, print_warning, print_error
-from utils import ensure_enable_mode
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import re
 
 from output_logging import _save_log
 from build_device import _build_device_and_hostname
 from load_and_validate_yaml import load_sys_config, get_validated_commands_list, get_validated_inventory_data
+from connect_device import connect_to_device
 
 
 #######################
@@ -127,53 +125,6 @@ target_command.add_argument("-L", "--commands-list", type=str, default="", help=
 #     return exec_commands
 
 
-def _connect_to_device(device: dict, hostname_for_log:str):
-    """
-    SSH セッションを確立して Netmiko の接続オブジェクトを返す。
-
-    Notes
-    -----
-    - `device` は Netmiko の `ConnectHandler` が要求するキー (`device_type`, `ip`, `username` …) を
-      そのまま持つ辞書であることを前提とする。
-    - 接続エラーは Netmiko の例外を捕捉して `ConnectionError` にラップし直すので、呼び出し側は
-      `ConnectionError` だけを意識すればよい。
-
-    Parameters
-    ----------
-    device : dict
-        接続パラメータ。`inventory.yaml` あるいは CLI 引数から構築したもの。
-    hostname_for_log : str
-        エラーメッセージやログ用ファイル名に使う “識別子”。  
-        通常は IP アドレスか inventory の `hostname`。
-
-    Returns
-    -------
-    BaseConnection
-        Netmiko の接続オブジェクト。成功すれば必ず `disconnect()` でクローズすること。
-
-    Raises
-    ------
-    ConnectionError
-        - タイムアウト (`NetMikoTimeoutException`)
-        - 認証失敗 (`NetMikoAuthenticationException`)
-        - それ以外の例外
-    """
-    # TODO: 将来的にはdevice_typeでCisco以外の他機種にも対応。
-    try:   
-        connection = ConnectHandler(**device)
-        try: 
-            ensure_enable_mode(connection)
-            return connection
-        except ValueError as e:
-            connection.disconnect()
-            raise ConnectionError(f"[{hostname_for_log}] Enableモードに移行できなかったケロ🐸 Secretが間違ってないケロ？ {e}")
-    except NetMikoTimeoutException:
-        raise ConnectionError(f"[{hostname_for_log}] タイムアウトしたケロ🐸 接続先がオフラインかも")
-    except NetMikoAuthenticationException:
-        raise ConnectionError(f"[{hostname_for_log}] 認証に失敗したケロ🐸 ユーザー名とパスワードを確認してケロ")
-    except Exception as e:
-        raise ConnectionError(f"[{hostname_for_log}]に接続できないケロ。🐸 詳細: \n {e}")
-
 def _get_prompt(connection):
     """
     デバイスのプロンプトを取得し、末尾の記号を取り除いたホスト名を返す。
@@ -218,7 +169,7 @@ def _execute_commands_list(connection, prompt, exec_commands):
         `_connect_to_device()` で取得した Netmiko 接続。
     prompt : str
         デバイスのプロンプト文字列（例: ``"R1#"``)
-    hostname_for_log : str
+    hostname : str
         メッセージ表示や例外ラップ用の識別子。
     args : argparse.Namespace
         CLI 引数オブジェクト。`args.commands_list` を使用。
@@ -275,12 +226,7 @@ def _execute_commands(connection, prompt, args, exec_commands):
         raise ValueError("command または commands_list のいずれかが必要ケロ🐸")
 
 
-
-
-
-
-
-def _handle_execution(device: dict, args, poutput, hostname_for_log):
+def _handle_execution(device: dict, args, poutput, hostname):
     """
     デバイス接続〜コマンド実行〜ログ保存までをまとめて処理するラッパー関数。
 
@@ -288,7 +234,7 @@ def _handle_execution(device: dict, args, poutput, hostname_for_log):
         device (dict): 接続情報を含むデバイス辞書
         args: コマンドライン引数
         poutput: cmd2 の出力関数
-        hostname_for_log (str): ログファイル名などに使うホスト識別子
+        hostname (str): ログファイル名などに使うホスト識別子
     """
 
     # ✅ 1. commands-list の存在チェック（必要なら）
@@ -302,8 +248,8 @@ def _handle_execution(device: dict, args, poutput, hostname_for_log):
 
     # ✅ 2. 接続とプロンプト取得
     try:
-        connection = _connect_to_device(device, hostname_for_log)
-        print_success(f"NODE: {hostname_for_log} 🔗接続成功ケロ🐸")
+        connection = connect_to_device(device, hostname)
+        print_success(f"NODE: {hostname} 🔗接続成功ケロ🐸")
         prompt, hostname = _get_prompt(connection)
     except ConnectionError as e:
         print_error(str(e))
@@ -325,9 +271,9 @@ def _handle_execution(device: dict, args, poutput, hostname_for_log):
         _save_log(result_output_string, hostname, args)
 
     # ✅ 6. 結果表示
-    print_info(f"NODE: {hostname_for_log} 📄OUTPUTケロ🐸")
+    print_info(f"NODE: {hostname} 📄OUTPUTケロ🐸")
     poutput(result_output_string)
-    print_success(f"NODE: {hostname_for_log} 🔚実行完了ケロ🐸")
+    print_success(f"NODE: {hostname} 🔚実行完了ケロ🐸")
 
 
 # def _load_and_validate_inventory(host=None, group=None):
@@ -451,8 +397,8 @@ def do_execute(self, args):
     """
 
     if args.ip:
-        device, hostname_for_log = _build_device_and_hostname(args)
-        _handle_execution(device, args, self.poutput, hostname_for_log)
+        device, hostname = _build_device_and_hostname(args)
+        _handle_execution(device, args, self.poutput, hostname)
         return
 
     if args.host or args.group: 
@@ -465,20 +411,20 @@ def do_execute(self, args):
         
     
     if args.host:
-        device, hostname_for_log = _build_device_and_hostname(args, inventory_data)
-        _handle_execution(device, args, self.poutput, hostname_for_log)
+        device, hostname = _build_device_and_hostname(args, inventory_data)
+        _handle_execution(device, args, self.poutput, hostname)
         return
 
     elif args.group:
-        device_list, hostname_for_log_list = _build_device_and_hostname(args, inventory_data)
+        device_list, hostname_list = _build_device_and_hostname(args, inventory_data)
 
         max_workers = _default_workers(len(device_list), args)
 
         with ThreadPoolExecutor(max_workers=max_workers) as pool:
 
             futures = []
-            for device, hostname_for_log in zip(device_list, hostname_for_log_list):
-                future = pool.submit(_handle_execution, device, args, self.poutput, hostname_for_log)
+            for device, hostname in zip(device_list, hostname_list):
+                future = pool.submit(_handle_execution, device, args, self.poutput, hostname)
                 futures.append(future)
 
             for future in as_completed(futures):
