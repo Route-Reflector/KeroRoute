@@ -132,10 +132,10 @@ def test_build_device_from_group():
     device_list, hostname_list = _build_device_from_group(args, inventory_data)
 
     assert isinstance(device_list, list)
-    assert isinstance(hostname_for_log_list, list)
+    assert isinstance(hostname_list, list)
 
     assert len(device_list) == 4
-    assert len(hostname_for_log_list) == 4
+    assert len(hostname_list) == 4
 
     """R2"""
     assert device_list[1]["ip"] == "192.168.10.11"
