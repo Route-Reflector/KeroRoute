@@ -23,8 +23,8 @@ def _build_device_from_ip(args):
         "timeout": args.timeout
         }
 
-    hostname_for_log = args.ip
-    return device, hostname_for_log
+    hostname = args.ip
+    return device, hostname
 
 
 def _build_device_from_host(args, inventory_data):
@@ -53,8 +53,8 @@ def _build_device_from_host(args, inventory_data):
         "timeout": node_info["timeout"] 
         }
 
-    hostname_for_log = node_info["hostname"]
-    return device, hostname_for_log 
+    hostname = node_info["hostname"]
+    return device, hostname 
 
 
 def _build_device_from_group(args, inventory_data):
@@ -73,7 +73,7 @@ def _build_device_from_group(args, inventory_data):
     group_info = inventory_data["all"]["groups"][f"{args.group}"]["hosts"]
         
     device_list = []
-    hostname_for_log_list = []
+    hostname_list = []
 
     for node in group_info:
         node_info = inventory_data["all"]["hosts"][f"{node}"]
@@ -86,12 +86,12 @@ def _build_device_from_group(args, inventory_data):
             "port": node_info["port"],
             "timeout": node_info["timeout"] 
             } 
-        hostname_for_log = node_info["hostname"]
+        hostname = node_info["hostname"]
         
         device_list.append(device)
-        hostname_for_log_list.append(hostname_for_log)
+        hostname_list.append(hostname)
     
-    return device_list, hostname_for_log_list
+    return device_list, hostname_list
 
 
 def _build_device_and_hostname(args, inventory_data=None):
