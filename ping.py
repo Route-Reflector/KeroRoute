@@ -25,7 +25,7 @@ def do_ping(self, args):
     try:
         ipaddress.IPv4Address(args.ip)
     except ipaddress.AddressValueError:
-        print_warning(self.poutput, "IPアドレス間違ってないケロ？🐸")
+        print_warning("IPアドレス間違ってないケロ？🐸")
         return
     
     if args.log:
