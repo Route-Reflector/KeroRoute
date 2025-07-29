@@ -103,26 +103,14 @@ def _execute_commands_list(connection, prompt, exec_commands):
         `_connect_to_device()` で取得した Netmiko 接続。
     prompt : str
         デバイスのプロンプト文字列（例: ``"R1#"``)
-    hostname : str
-        メッセージ表示や例外ラップ用の識別子。
-    args : argparse.Namespace
-        CLI 引数オブジェクト。`args.commands_list` を使用。
-    device : dict
-        対象デバイス辞書。ここでは主に `device['device_type']` を参照。
+    exec_commands : dict
+        get_validated_commands_listで取得したexec_command
+
 
     Returns
     -------
     str
         各コマンド実行結果を改行で連結したテキスト。
-
-    Raises
-    ------
-    FileNotFoundError
-        `commands-lists.yaml` が存在しない場合
-    ValueError
-        device_type 不一致や commands_list 未定義など、ユーザ入力に起因する不整合
-    KeyError
-        YAML 構造が想定外だった場合
     """
     full_output_list = []
 
@@ -141,10 +129,8 @@ def _execute_commands(connection, prompt, args, exec_commands):
     Args:
         connection: Netmikoの接続オブジェクト
         prompt (str): デバイスのプロンプト（例: "R1#"）
-        hostname (str): 子関数 `_execute_commands_list` に渡すための識別子。本関数内では直接使用しない。
         args: コマンドライン引数（args.command または args.commands_list を含む）
-        poutput: cmd2 の出力関数（エラーメッセージ表示に使用）
-        device (dict): 対象デバイスの情報（device_typeなどを含む）
+        exec_command (dict): get_validated_commands_listで取得したexec_command
 
     Returns:
         str: 実行結果（複数コマンドの場合は結合済み出力）
