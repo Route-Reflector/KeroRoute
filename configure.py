@@ -1,13 +1,13 @@
 import argparse
 import cmd2
 from message import print_info, print_success, print_warning, print_error
-from executor import _default_workers
 from load_and_validate_yaml import get_validated_inventory_data, get_validated_config_list
 from output_logging import _save_log
 from build_device import _build_device_and_hostname
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from prompt_utils import get_prompt, ensure_enable_mode
 from connect_device import connect_to_device
+from workers import default_workers
 
 
 ######################
@@ -153,7 +153,7 @@ def do_configure(self, args):
     elif args.group:
         device_list, hostname_list = _build_device_and_hostname(args, inventory_data)
 
-        max_workers = _default_workers(len(device_list), args)
+        max_workers = default_workers(len(device_list), args)
 
         with ThreadPoolExecutor(max_workers=max_workers) as pool:
 
