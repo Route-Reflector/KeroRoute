@@ -1,9 +1,11 @@
 import argparse
 from pathlib import Path
 import cmd2
+from cmd2 import Cmd2ArgumentParser
 from ruamel.yaml import YAML
 from message import print_info, print_success, print_warning, print_error
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from rich_argparse import RawTextRichHelpFormatter
 
 from prompt_utils import get_prompt
 from output_logging import _save_log
@@ -16,38 +18,42 @@ from workers import default_workers
 ######################
 ###  HELP_SECTION  ### 
 ######################
+# bright_yellow -> file_name or file_path
 ip_help = "対象デバイスのIPアドレスを指定します。"
-host_help = "inventory.yamlに定義されたホスト名を指定します。"
-group_help = "inventory.yamlに定義されたグループ名を指定します。グループ内の全ホストにコマンドを実行します。"
+host_help = "[bright_yellow]inventory.yaml[/bright_yellow]に定義されたホスト名を指定します。"
+group_help = "[bright_yellow]inventory.yaml[/bright_yellow]に定義されたグループ名を指定します。グループ内の全ホストにコマンドを実行します。"
 
 command_help = "1つのコマンドを直接指定して実行します。"
-command_list_help = "コマンドリスト名（commands-lists.yamlに定義）を指定して実行します。" \
-                    "device_typeはホストから自動で選択されます。"
+command_list_help = ("コマンドリスト名（[bright_yellow]commands-lists.yaml[/bright_yellow]に定義）を指定して実行します。\n" 
+                    "device_typeはホストから自動で選択されます。")
 
-username_help = "SSH接続に使用するユーザー名を指定します。--ip専用。--host|--group指定時はinventory.yamlの値を使用します。"
-password_help = "SSH接続に使用するパスワードを指定します。--ip専用。--host|--group指定時はinventory.yamlの値を使用します。"
-device_type_help = "Netmikoにおけるデバイスタイプを指定します（例: cisco_ios）。省略時は 'cisco_ios' です。"
-port_help = "SSH接続に使用するポート番号を指定します（デフォルト: 22）"
-timeout_help = "SSH接続のタイムアウト秒数を指定します（デフォルト: 10秒）"
+username_help = ("--ip 専用。SSH接続に使用するユーザー名を指定します。\n"
+                 "--host | --group 指定時は[bright_yellow]inventory.yaml[/bright_yellow]の値を使用します。\n")
+password_help = ("--ip 専用。SSH接続に使用するパスワードを指定します。\n"
+                 " --host | --group 指定時は[bright_yellow]inventory.yaml[/bright_yellow]の値を使用します。\n")
+device_type_help = "Netmikoにおけるデバイスタイプを指定します（例: cisco_ios）。省略時は 'cisco_ios' です。\n"
+port_help = "SSH接続に使用するポート番号を指定します（デフォルト: 22）\n"
+timeout_help = "SSH接続のタイムアウト秒数を指定します（デフォルト: 10秒）\n"
 log_help = ("実行結果をログファイルとして保存します。\n"
-           "保存先: logs/execute/\n"
-           "保存名: yearmmdd-hhmmss_[hostname]_[commands_or_commands_list]\n"
-           "example: 20250504-235734_R0_show-ip-int-brief.log")
+            "保存先: logs/execute/\n"
+            "保存名: yearmmdd-hhmmss_[hostname]_[commands_or_commands_list]\n"
+            "[bright_yellow]example: 20250504-235734_R0_show-ip-int-brief.log\n[/bright_yellow]")
 memo_help = ("ログファイル名に付加する任意のメモ（文字列）を指定します。\n"
              "保存先: logs/execute/\n"
              "保存名: yearmmdd-hhmmss_[hostname]_[commands_or_commands_list]_[memo]\n"
-             "example 20250506-125600_R0_show-ip-int-brief_memo.log")
+             "[bright_yellow]example: 20250506-125600_R0_show-ip-int-brief_memo.log\n[/bright_yellow]")
 workers_help = ("並列実行するワーカースレッド数を指定します。\n"
-                "指定しない場合は sys_config.yaml の executor.default_workers を参照します。\n"
-                "そこにも設定が無いときは、グループ台数と 規定上限(DEFAULT_MAX_WORKERS) の小さい方が自動で採用されます。")
+                "指定しない場合は [bright_yellow]sys_config.yaml[/bright_yellow] の [bright_yellow]executor.default_workers[/bright_yellow] を参照します。\n"
+                "そこにも設定が無いときは、グループ台数と 規定上限([bright_blue]DEFAULT_MAX_WORKERS[/bright_blue]) の小さい方が自動で採用されます。\n\n")
 secret_help = ("enable に入るための secret を指定します。(省略時は password を流用します。)\n"
-               "--ip専用。--host|--group指定時はinventory.yamlの値を使用します。")
+               "--ip 専用。--host | --group 指定時は [green]inventory.yaml[/green] の値を使用します。\n\n")
 
 
 ######################
 ### PARSER_SECTION ###
 ######################
-netmiko_execute_parser = argparse.ArgumentParser(formatter_class=argparse.RawTextHelpFormatter)
+# netmiko_execute_parser = argparse.ArgumentParser(formatter_class=argparse.RawTextHelpFormatter)
+netmiko_execute_parser = Cmd2ArgumentParser(formatter_class=RawTextRichHelpFormatter, description="[green]execute コマンド🐸[/green]")
 # "-h" はhelpと競合するから使えない。
 netmiko_execute_parser.add_argument("-u", "--username", type=str, default="", help=username_help)
 netmiko_execute_parser.add_argument("-p", "--password", type=str, default="", help=password_help)
