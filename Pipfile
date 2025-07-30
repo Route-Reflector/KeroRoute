@@ -4,12 +4,13 @@ verify_ssl = true
 name = "pypi"
 
 [packages]
-cmd2 = "*"
 rich = "*"
 netmiko = "*"
 "ruamel.yaml" = "*"
 pyserial = "*"
 python-gnupg = "*"
+cmd2 = "<2.8,>=2.7"
+rich-argparse = "*"
 
 [dev-packages]
 flake8 = "*"
