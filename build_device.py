@@ -1,3 +1,5 @@
+from load_and_validate_yaml import get_validated_inventory_data
+from message import print_error
 
 
 def _build_device_from_ip(args):
@@ -113,3 +115,58 @@ def _build_device_and_hostname(args, inventory_data=None):
         return _build_device_from_host(args, inventory_data)
     elif args.group:
         return _build_device_from_group(args, inventory_data)
+
+
+def _build_device_for_console(args, serial_port):
+    device = {
+        "device_type": args.device_type or "cisco_ios_serial",
+        "serial_settings": {
+            "port": serial_port,
+            "baudrate": args.baudrate
+        },
+        "username": args.username,     # ログイン要求があれば
+        "password": args.password      # 同上
+    }
+
+    hostname = ""
+
+    return device, hostname
+
+
+def _build_device_for_console_from_host(args, inventory_data, serial_port):
+    # deviceについては stopbits / parity / bytesize / xonxoff / rtscts / timeout などの拡張が想定される。
+
+    node_info = inventory_data.get("all", {}).get("hosts", {}).get(f"{args.host}", {})
+    if not node_info:
+        msg = f"inventoryにホスト '{args.host}' が見つからないケロ🐸"
+        print_error(msg)
+        raise KeyError(msg)    
+
+    device = {
+        "device_type": args.device_type or node_info.get("device_type", "cisco_ios_serial"),
+        "serial_settings": {
+            "port": serial_port,
+            "baudrate": int(node_info.get("baudrate", "9600"))
+        },
+        "username": args.username or node_info.get("username", ""),     # ログイン要求があれば
+        "password": args.password or node_info.get("password", "")     # 同上
+    }
+
+    hostname = node_info.get("hostname", "")
+
+    return device, hostname
+
+
+def _build_device_for_console_from_group():
+    # NotImplemented
+    pass
+
+
+def build_device_and_hostname_for_console(args, inventory_data=None, serial_port=None):
+    if args.host:
+        return _build_device_for_console_from_host(args, inventory_data, serial_port)
+    elif args.group:
+        raise NotImplementedError
+        return _build_device_for_console_from_group(args, inventory_data, serial_port)
+    else:    
+        return _build_device_for_console(args, serial_port)

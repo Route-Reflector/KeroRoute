@@ -10,6 +10,7 @@ from message import print_error, print_info, print_warning, print_success
 from load_and_validate_yaml import get_validated_inventory_data, get_validated_commands_list
 from output_logging import _save_log
 from prompt_utils import wait_for_prompt_returned
+from build_device import build_device_and_hostname_for_console
 
 
 
@@ -102,51 +103,27 @@ def do_console(self, args):
         print_error(str(e))
         return
 
-    if args.host:
-        # ✅ inventory.yaml の存在チェックと --host の妥当性確認
-        # ※ 接続前なので try/except で安全に中断する
+
+    # ---[ 今はここで仮に None を用意 ]-------------------------
+    # TODO(KeroRoute v1.0): inventory.yaml ローダを main.py で
+    # 一元管理して self.inventory に格納する予定。
+    inventory_data = None
+    # -----------------------------------------------------------
+
+
+    if args.host: 
+    # ※ 接続前なので try/except で安全に中断する
         try:
             inventory_data = get_validated_inventory_data(host=args.host)
         except (FileNotFoundError, ValueError) as e:
             print_error(str(e))
             return
-        node_info = inventory_data.get("all", {}).get("hosts", {}).get(f"{args.host}", {})
-        if not node_info:
-            msg = f"inventoryにホスト '{args.host}' が見つからないケロ🐸"
-            print_error(msg)
-            raise KeyError(msg)
 
-        # deviceについては stopbits / parity / bytesize / xonxoff / rtscts / timeout などの拡張が想定される。
-        device = {
-            "device_type": args.device_type or node_info.get("device_type", "cisco_ios_serial"),
-            "serial_settings": {
-                "port": serial_port,
-                "baudrate": int(node_info.get("baudrate", "9600"))
-            },
-            "username": args.username or node_info.get("username", ""),     # ログイン要求があれば
-            "password": args.password or node_info.get("password", "")     # 同上
-        }
+    device , hostname = build_device_and_hostname_for_console(args, inventory_data, serial_port)
 
-    else:
-        device = {
-            "device_type": args.device_type or "cisco_ios_serial",
-            "serial_settings": {
-                "port": serial_port,
-                "baudrate": args.baudrate
-            },
-            "username": args.username,     # ログイン要求があれば
-            "password": args.password      # 同上
-        }
 
     connection = ConnectHandler(**device)
 
-    connection.set_base_prompt()
-    wait_for_prompt_returned(connection, sleep_time=SLEEP_TIME)
-    prompt = connection.find_prompt()
-    hostname = connection.base_prompt
-
-    expect_prompt = rf"{re.escape(hostname)}[#>]"
-    
     if not connection.check_enable_mode():
         try: 
             connection.enable()
@@ -154,6 +131,15 @@ def do_console(self, args):
             msg = f"Enableモードに移行できなかったケロ🐸 {e}"
             print_error(msg)
             raise ValueError(msg)
+
+    connection.set_base_prompt()
+    wait_for_prompt_returned(connection, sleep_time=SLEEP_TIME)
+    prompt = connection.find_prompt()
+
+    hostname = connection.base_prompt
+
+    expect_prompt = rf"{re.escape(hostname)}[#>]"
+
 
     if args.command:
         output = connection.send_command(args.command, delay_factor=DELAY_FACTOR, expect_string=expect_prompt, read_timeout=args.read_timeout)
