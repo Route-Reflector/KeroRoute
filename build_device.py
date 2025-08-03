@@ -159,7 +159,7 @@ def _build_device_for_console_from_host(args, inventory_data, serial_port):
 
 def _build_device_for_console_from_group():
     # NotImplemented
-    pass
+    raise NotImplementedError
 
 
 def build_device_and_hostname_for_console(args, inventory_data=None, serial_port=None):

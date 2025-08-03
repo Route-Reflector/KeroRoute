@@ -16,7 +16,7 @@ def sanitize_filename(text: str) -> str:
     return re.sub(r'[\\/:*?"<>|]', '_', text).strip()
 
 
-def _save_log(result_output_string: str, hostname: str, args, mode: str = "execute") -> None:
+def _save_log(result_output_string: str, hostname: str, args, mode: str = "execute") -> str | None:
     """
     実行結果を日時付きファイルに保存するユーティリティ。
 
@@ -37,7 +37,8 @@ def _save_log(result_output_string: str, hostname: str, args, mode: str = "execu
     
     Returns
     -------
-    None
+    pathlib.Path | None
+        login モードではファイルパスを返し、その他はNone
 
     Raises
     ------
@@ -59,6 +60,7 @@ def _save_log(result_output_string: str, hostname: str, args, mode: str = "execu
         log_dir.mkdir(parents=True, exist_ok=True)
         timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
 
+        # sanitized_commandの中にコマンド以外を入れてるから変数名を変えた方が良いかも。
         if mode == "configure":
             sanitized_command = sanitize_filename(args.config_list)
         elif mode == "scp":        
@@ -67,6 +69,8 @@ def _save_log(result_output_string: str, hostname: str, args, mode: str = "execu
                 sanitized_command = sanitize_filename(f"SCP_PUT_{scp_file_name}")
             elif args.get:
                 sanitized_command = sanitize_filename(f"SCP_GET_{scp_file_name}")
+        elif mode == "login":
+            sanitized_command = sanitize_filename(f"LOGIN")
         elif args.command:
             if mode == "console":
                 sanitized_command = sanitize_filename(f"{args.command}_by_console")
@@ -87,6 +91,10 @@ def _save_log(result_output_string: str, hostname: str, args, mode: str = "execu
             file_name = f"{timestamp}_{hostname}_{sanitized_command}_{sanitized_memo}.log"
         
         log_path = log_dir / file_name
+
+        # loginコマンドではファイルパスのみ返す。(loginコマンドで処理するため。)
+        if mode == "login":
+            return log_path
 
         with open(log_path, "w") as log_file:
             log_file.write(result_output_string)
