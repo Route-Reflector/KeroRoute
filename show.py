@@ -39,6 +39,13 @@ commands_list_help = (
     "例: show --commands-list cisco_ios jizen_command\n"
 )
 
+config_lists_help = "すべてのコンフィグリストの一覧を表示します。"
+config_list_help = (
+    "コンフィグリストの内容を表示します。\n"
+    "2つの引数(DDEVICE_TYPE と CONFIG_LIST)を指定してください。\n"
+    "example: show --config-list cisco_ios R1_loopback100_setup"
+)
+
 logs_help = "保存されているすべてのログファイルの一覧を表示します。"
 log_help = "--logで表示するログファイルを指定します。(例: 20250508/filename.log)"
 log_last_help = "最新のログファイルの内容を表示します。"
@@ -76,6 +83,8 @@ target_show.add_argument("--logs", action="store_true", help=logs_help)
 target_show.add_argument("--log", type=str, default="execute", help=log_help)
 target_show.add_argument("--log-last", action="store_true", help=log_last_help)
 target_show.add_argument("--diff", nargs=2, metavar=("OLD_LOG", "NEW_LOG"), help=diff_help)
+target_show.add_argument("--config-lists", action="store_true", help=config_lists_help)
+target_show.add_argument("--config-list", nargs=2, metavar=("DEVICE_TYPE", "COMMAND_LIST"), help=config_list_help)
 
 
 def _show_hosts():
@@ -273,6 +282,76 @@ def _show_commands_list(device_type, commands_list):
     console.print(panel)
 
 
+def _show_config_lists():
+    yaml = YAML()
+
+    if not Path("config-lists.yaml").exists():
+        print_error("config-lists.yaml が無いケロ🐸")
+        return
+
+    with open("config-lists.yaml", "r") as yaml_config_lists:
+        config_lists = yaml.load(yaml_config_lists)
+
+    table_theme = get_table_theme()
+    
+    table = Table(title="🐸 SHOW_CONFIG_LISTS 🐸", **table_theme)
+
+    header = ["DEVICE_TYPE", "NAME", "DESCRIPTION", "TAGS"]
+
+    for _ in header:
+        table.add_column(_)
+
+    config_lists_info = config_lists["config_lists"]
+
+    for device_type in config_lists_info:
+        for config_list in config_lists_info[device_type]:
+            config_list_info = config_lists_info[device_type][config_list]
+
+            table_output =[
+                f"{device_type}",
+                f"{config_list}",
+                f'{config_list_info["description"]}',
+                f'{", ".join(config_list_info["tags"])}'
+                ]
+            table.add_row(*table_output)
+
+    console = Console() 
+    console.print(table)
+
+
+def _show_config_list(device_type, config_list):
+    yaml = YAML()
+
+    if not Path("config-lists.yaml").exists():
+        print_error("config-lists.yaml が無いケロ🐸")
+        return
+
+    with open("config-lists.yaml", "r") as yaml_config_lists:
+        config_lists = yaml.load(yaml_config_lists)
+        config_list_info = config_lists["config_lists"][device_type][config_list]
+
+    table_theme = get_table_theme()
+    table = Table(title="🐸 SHOW_CONFIG_LIST 🐸", **table_theme)
+    header = ["CONFIG LIST", "DESCRIPTION", "DEVICE_TYPE", "LINES", "TAGS"]
+    row_data = [f"{config_list}", f'{config_list_info["description"]}', f"{device_type}",
+                f'{len(config_list_info["config_list"])} line(s)', f'{", ".join(config_list_info["tags"])}']
+
+    for _ in header:
+        table.add_column(_)
+
+    table.add_row(*row_data)
+
+    panel_body = Text()
+    lines = [f"{i}. {line}" for i, line in enumerate(config_list_info["config_list"], start=1)] 
+    panel_body.append("\n".join(lines))
+    panel_theme = get_panel_theme()
+    panel = Panel(panel_body, title="🐸 COMMANDS 🐸", **panel_theme)
+
+    console = Console()
+    console.print(table)
+    console.print("\n")
+    console.print(panel)
+
 
 def _show_logs(args):
 
@@ -454,6 +533,11 @@ def do_show(self, args):
     elif args.commands_list:
         device_type, commands_list = args.commands_list
         _show_commands_list(device_type, commands_list)
+    elif args.config_lists:
+        _show_config_lists()
+    elif args.config_list:
+        device_type, config_list = args.config_list
+        _show_config_list(device_type, config_list)
     elif args.logs:
         _show_logs(args)
     elif args.log:
