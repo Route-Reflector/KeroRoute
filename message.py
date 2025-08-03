@@ -16,11 +16,13 @@ def _timestamp() -> str:
     return f"[{now.strftime('%H:%M:%S')}.{int(now.microsecond / 1000):03d}]"
 
 
-def print_info(message: str):
-    if style == "panel":
-        _console.print(Panel(f"[bright_cyan]{_timestamp()} 🪧[INFO] {message}[/bright_cyan]"))
+def print_info(message: str, panel: bool = False):
+    show_panel = panel or (style == "panel")
+    content = f"[bright_cyan]{_timestamp()} 🪧[INFO] {message}[/bright_cyan]"
+    if show_panel:
+        _console.print(Panel(content))
     else:
-        _console.print(f"[bright_cyan]{_timestamp()} 🪧[INFO] {message}[/bright_cyan]")
+        _console.print(content)
 
 
 def print_success(message: str):

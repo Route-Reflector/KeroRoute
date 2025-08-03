@@ -12,10 +12,10 @@ def get_prompt(connection):
         connection (BaseConnection): Netmikoの接続オブジェクト
 
     Returns:
-        tuple[str, str]: プロンプト（例: "R1#"）とホスト名（例: "R1"）
+        tuple[str, str]: プロンプト（例: "R1(config-if)#"）とホスト名（例: "R1"）
     """
     prompt = connection.find_prompt()
-    hostname = re.sub(r'[#>]+$', '', prompt)
+    hostname = re.split(r'[\(#>]', prompt, 1)[0]
     
     return prompt, hostname
 
