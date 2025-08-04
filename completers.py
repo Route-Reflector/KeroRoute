@@ -1,6 +1,7 @@
 from ruamel.yaml import YAML
 from pathlib import Path
 from typing import List, Set
+import shlex
 
 
 _yaml = YAML()
@@ -101,9 +102,45 @@ def device_types_completer(_self, text :str, _line, _begidx, _endidx) -> List[st
     return device_type_list
 
 
-def commands_list_names_completer(device_type: str, text: str) -> List[str]:
-    commands_data = _load("commands-lists.yaml")["commands_lists"]
-    return _match(list(commands_data.get(device_type, {}).keys()), text)
+def commands_list_names_completer(_self, text: str, line: str, _begidx, _endidx) -> List[str]:
+    """
+    line から --device_type の値を拾い、その下のリストを補完する。
+    device_type が未入力なら全 device_type を横断した名前を返す。
+        _self,                    # Cmd2 のインスタンス（使わないので "_"）
+    text: str,                # いま補完中の部分文字列
+    line: str,                # 入力行全体：--device_type の有無を調べる
+    _begidx, _endidx          # 開始 / 終了インデックス（今回は未使用）
+    """
+    # ────────────────────────────────────────────────────────────────
+    # commands-list 用 completer   ← 5 引数が必要
+    # ────────────────────────────────────────────────────────────────
+
+    # 1. shlexで行を分割(example: ["execute", "--device_type", "cisco_ios", ...]）
+    try:
+        tokens = shlex.split(line)
+    except ValueError:
+        return []
+
+    # 2. --device_type <value> を 探して <value> を抜き取る
+    device_type = None
+    for i, tok in enumerate(tokens):
+        if tok in ("-d", "--device_type") and i + 1 < len(tokens):
+            device_type = tokens[i + 1]
+            break
+    
+    commands_data = _load("commands-lists.yaml").get("commands_lists", {})
+
+    # device_type が確定していれば、その型の下だけを見る
+    if device_type and device_type in commands_data:
+        names = list(commands_data[device_type].keys())
+    else:
+        # 未入力ならすべての device_type を横断した一覧
+        names = [n for d in commands_data.values() for n in d.keys()]
+
+    # プレフィックス一致で絞り込み → ソート済み候補を返す
+    return _match(names, text)
+
+    # return _match(list(commands_data.get(device_type, {}).keys()), text)
 
 
 def config_list_names_completer(device_type: str, text: str) -> List[str]:
