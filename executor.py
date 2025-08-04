@@ -13,6 +13,7 @@ from build_device import _build_device_and_hostname
 from load_and_validate_yaml import get_validated_commands_list, get_validated_inventory_data
 from connect_device import connect_to_device
 from workers import default_workers
+from completers import host_names_completer, group_names_completer, device_types_completer, commands_list_names_completer
 
 
 ######################
@@ -57,7 +58,7 @@ netmiko_execute_parser = Cmd2ArgumentParser(formatter_class=RawTextRichHelpForma
 # "-h" はhelpと競合するから使えない。
 netmiko_execute_parser.add_argument("-u", "--username", type=str, default="", help=username_help)
 netmiko_execute_parser.add_argument("-p", "--password", type=str, default="", help=password_help)
-netmiko_execute_parser.add_argument("-d", "--device_type", type=str, default="cisco_ios", help=device_type_help)
+netmiko_execute_parser.add_argument("-d", "--device_type", type=str, default="cisco_ios", help=device_type_help, completer=device_types_completer)
 netmiko_execute_parser.add_argument("-P", "--port", type=int, default=22, help=port_help)
 netmiko_execute_parser.add_argument("-t", "--timeout", type=int, default=10, help=timeout_help)
 netmiko_execute_parser.add_argument("-l", "--log", action="store_true", help=log_help)
@@ -68,12 +69,12 @@ netmiko_execute_parser.add_argument("-s", "--secret", type=str, default="", help
 # mutually exclusive
 target_node = netmiko_execute_parser.add_mutually_exclusive_group(required=True)
 target_node.add_argument("-i", "--ip", type=str, nargs="?", default=None, help=ip_help)
-target_node.add_argument("--host", type=str, nargs="?", default=None, help=host_help)
-target_node.add_argument("--group", type=str, nargs="?", default=None, help=group_help)
+target_node.add_argument("--host", type=str, nargs="?", default=None, help=host_help, completer=host_names_completer)
+target_node.add_argument("--group", type=str, nargs="?", default=None, help=group_help, completer=group_names_completer)
 
 target_command = netmiko_execute_parser.add_mutually_exclusive_group(required=True)
 target_command.add_argument("-c", "--command", type=str, default="", help=command_help)
-target_command.add_argument("-L", "--commands-list", type=str, default="", help=command_list_help)
+target_command.add_argument("-L", "--commands-list", type=str, default="", help=command_list_help, completer=commands_list_names_completer)
 
 
 def _execute_command(connection, prompt, command):
