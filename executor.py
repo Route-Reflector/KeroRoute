@@ -1,8 +1,6 @@
 import argparse
-from pathlib import Path
 import cmd2
 from cmd2 import Cmd2ArgumentParser
-from ruamel.yaml import YAML
 from message import print_info, print_success, print_warning, print_error
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from rich_argparse import RawTextRichHelpFormatter
@@ -105,7 +103,7 @@ def _execute_commands_list(connection, prompt, exec_commands):
         `_connect_to_device()` で取得した Netmiko 接続。
     prompt : str
         デバイスのプロンプト文字列（例: ``"R1#"``)
-    exec_commands : dict
+    exec_commands : list[str]
         get_validated_commands_listで取得したexec_command
 
 
@@ -148,7 +146,7 @@ def _execute_commands(connection, prompt, args, exec_commands):
         raise ValueError("command または commands_list のいずれかが必要ケロ🐸")
 
 
-def _handle_execution(device: dict, args, poutput, hostname):
+def _handle_execution(device: dict, args, poutput, hostname) -> str | None:
     """
     デバイス接続〜コマンド実行〜ログ保存までをまとめて処理するラッパー関数。
 
@@ -157,16 +155,21 @@ def _handle_execution(device: dict, args, poutput, hostname):
         args: コマンドライン引数
         poutput: cmd2 の出力関数
         hostname (str): ログファイル名などに使うホスト識別子
+    
+    Returns:
+        成功時 None
+        失敗時 hostname (str)
     """
 
     # ✅ 1. commands-list の存在チェック（必要なら）
+    result_output_string = ""
     exec_commands = None # args.commandのとき未定義になるため必要。
 
     try:
         if args.commands_list:
             exec_commands = get_validated_commands_list(args, device)
     except (FileNotFoundError, ValueError):
-        return
+        return hostname # 失敗時
 
     # ✅ 2. 接続とプロンプト取得
     try:
@@ -175,7 +178,7 @@ def _handle_execution(device: dict, args, poutput, hostname):
         prompt, hostname = get_prompt(connection)
     except ConnectionError as e:
         print_error(str(e))
-        return
+        return hostname # 失敗時
 
     # ✅ 3. コマンド実行（単発 or リスト）
     try:
@@ -183,7 +186,7 @@ def _handle_execution(device: dict, args, poutput, hostname):
     except (KeyError, ValueError) as e:
         print_error(str(e))
         connection.disconnect()
-        return
+        return hostname # 失敗時
 
     # ✅ 4. 接続終了
     connection.disconnect()
@@ -196,6 +199,7 @@ def _handle_execution(device: dict, args, poutput, hostname):
     print_info(f"NODE: {hostname} 📄OUTPUTケロ🐸")
     poutput(result_output_string)
     print_success(f"NODE: {hostname} 🔚実行完了ケロ🐸")
+    return None # 成功時
 
 
 @cmd2.with_argparser(netmiko_execute_parser)
@@ -207,7 +211,7 @@ def do_execute(self, args):
     ------------
     1. `--ip` 指定 → 単一デバイス  
     2. `--host`    → inventory から 1 台  
-    3. `--group`   → inventory グループ内の複数台（※並列化は今後）
+    3. `--group`   → inventory グループ内の複数台
 
     Notes
     -----
@@ -218,7 +222,9 @@ def do_execute(self, args):
 
     if args.ip:
         device, hostname = _build_device_and_hostname(args)
-        _handle_execution(device, args, self.poutput, hostname)
+        result_failed_hostname = _handle_execution(device, args, self.poutput, hostname)
+        if result_failed_hostname:
+            print_error(f"❎ 🐸なんかトラブルケロ@: {result_failed_hostname}")
         return
 
     if args.host or args.group: 
@@ -232,13 +238,17 @@ def do_execute(self, args):
     
     if args.host:
         device, hostname = _build_device_and_hostname(args, inventory_data)
-        _handle_execution(device, args, self.poutput, hostname)
+        result_failed_hostname = _handle_execution(device, args, self.poutput, hostname)
+        if result_failed_hostname:
+            print_error(f"❎ 🐸なんかトラブルケロ@: {result_failed_hostname}")
         return
 
     elif args.group:
         device_list, hostname_list = _build_device_and_hostname(args, inventory_data)
 
         max_workers = default_workers(len(device_list), args)
+
+        result_failed_hostname_list = []
 
         with ThreadPoolExecutor(max_workers=max_workers) as pool:
 
@@ -249,6 +259,15 @@ def do_execute(self, args):
 
             for future in as_completed(futures):
                 try:
-                    future.result()
+                    result_failed_hostname = future.result()
+                    if result_failed_hostname:
+                        result_failed_hostname_list.append(result_failed_hostname)
                 except Exception as e:
-                    print_error(f"")
+                    # _handle_configure で捕まえていない想定外の例外
+                    print_error(f"⚠️ 未処理の例外: {hostname}:{e}")
+
+        # 結果をまとめて表示
+        if result_failed_hostname_list:
+            print_warning(f"❎ 🐸なんかトラブルケロ: {', '.join(sorted(result_failed_hostname_list))}")
+        else:
+            print_success("✅ すべてのホストで実行完了ケロ🐸")

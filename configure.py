@@ -185,7 +185,7 @@ def do_configure(self, args):
                         result_failed_hostname_list.append(result_failed_hostname)
                 except Exception as e:
                     # _handle_configure で捕まえていない想定外の例外
-                    print_error(f"⚠️ 未処理の例外: {e}")
+                    print_error(f"⚠️ 未処理の例外: {hostname}:{e}")
 
         # 結果をまとめて表示
         if result_failed_hostname_list:
