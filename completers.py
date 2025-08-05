@@ -135,14 +135,50 @@ def commands_list_names_completer(_self, text: str, line: str, _begidx, _endidx)
         names = list(commands_data[device_type].keys())
     else:
         # 未入力ならすべての device_type を横断した一覧
-        names = [n for d in commands_data.values() for n in d.keys()]
+        names = []
+        for device_dict in commands_data.values():
+            for commands_list_name in device_dict.keys():
+                names.append(commands_list_name)
 
     # プレフィックス一致で絞り込み → ソート済み候補を返す
     return _match(names, text)
 
-    # return _match(list(commands_data.get(device_type, {}).keys()), text)
 
+def config_list_names_completer(_self, text: str, line: str, _begidx, _endidx) -> List[str]:
+    """
+    line から --device_type の値を拾い、その配下の config_list 名を補完する。
+    device_type が未入力なら全 device_type を横断した一覧を返す。
+        _self     : Cmd2 インスタンス（未使用なので "_"）
+        text      : いま補完中の部分文字列
+        line      : 入力行全体（--device_type の有無を調べる）
+        _begidx   : text の開始位置（未使用）
+        _endidx   : text の終了位置（未使用）
+    """
+    # 1. shlexで行を分割(example: ["configure", "--device_type", "cisco_ios", ...]）
+    try:
+        tokens = shlex.split(line)
+    except ValueError:
+        return []
+    
+    # 2. --device_type <value> を 探して <value> を抜き取る
+    device_type = None
+    for i, tok in enumerate(tokens):
+        if tok in ("-d", "--device_type") and i + 1 < len(tokens):
+            device_type = tokens[i + 1]
+            break
+    
+    config_data = _load("config-lists.yaml").get("config_lists", {})
 
-def config_list_names_completer(device_type: str, text: str) -> List[str]:
-    config_data = _load("config-lists.yaml")["config_lists"]
-    return _match(list(config_data.get(device_type, {}).keys()), text)
+    # device_type が確定していれば、その型の下だけを見る
+    if device_type and device_type in config_data:
+        names = list(config_data[device_type].keys())
+    else:
+        # 未入力ならすべての device_type を横断した一覧
+        names = []
+        for device_dict in config_data.values():
+            for config_list_name in device_dict.keys():
+                names.append(config_list_name)
+
+    # プレフィックス一致で絞り込み → ソート済み候補を返す
+    return _match(names, text)
+

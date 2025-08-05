@@ -248,4 +248,7 @@ def do_execute(self, args):
                 futures.append(future)
 
             for future in as_completed(futures):
-                future.result()
+                try:
+                    future.result()
+                except Exception as e:
+                    print_error(f"")
