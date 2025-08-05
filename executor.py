@@ -1,8 +1,6 @@
 import argparse
-from pathlib import Path
 import cmd2
 from cmd2 import Cmd2ArgumentParser
-from ruamel.yaml import YAML
 from message import print_info, print_success, print_warning, print_error
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from rich_argparse import RawTextRichHelpFormatter
@@ -13,6 +11,7 @@ from build_device import _build_device_and_hostname
 from load_and_validate_yaml import get_validated_commands_list, get_validated_inventory_data
 from connect_device import connect_to_device
 from workers import default_workers
+from completers import host_names_completer, group_names_completer, device_types_completer, commands_list_names_completer
 
 
 ######################
@@ -57,7 +56,7 @@ netmiko_execute_parser = Cmd2ArgumentParser(formatter_class=RawTextRichHelpForma
 # "-h" はhelpと競合するから使えない。
 netmiko_execute_parser.add_argument("-u", "--username", type=str, default="", help=username_help)
 netmiko_execute_parser.add_argument("-p", "--password", type=str, default="", help=password_help)
-netmiko_execute_parser.add_argument("-d", "--device_type", type=str, default="cisco_ios", help=device_type_help)
+netmiko_execute_parser.add_argument("-d", "--device_type", type=str, default="cisco_ios", help=device_type_help, completer=device_types_completer)
 netmiko_execute_parser.add_argument("-P", "--port", type=int, default=22, help=port_help)
 netmiko_execute_parser.add_argument("-t", "--timeout", type=int, default=10, help=timeout_help)
 netmiko_execute_parser.add_argument("-l", "--log", action="store_true", help=log_help)
@@ -68,12 +67,12 @@ netmiko_execute_parser.add_argument("-s", "--secret", type=str, default="", help
 # mutually exclusive
 target_node = netmiko_execute_parser.add_mutually_exclusive_group(required=True)
 target_node.add_argument("-i", "--ip", type=str, nargs="?", default=None, help=ip_help)
-target_node.add_argument("--host", type=str, nargs="?", default=None, help=host_help)
-target_node.add_argument("--group", type=str, nargs="?", default=None, help=group_help)
+target_node.add_argument("--host", type=str, nargs="?", default=None, help=host_help, completer=host_names_completer)
+target_node.add_argument("--group", type=str, nargs="?", default=None, help=group_help, completer=group_names_completer)
 
 target_command = netmiko_execute_parser.add_mutually_exclusive_group(required=True)
 target_command.add_argument("-c", "--command", type=str, default="", help=command_help)
-target_command.add_argument("-L", "--commands-list", type=str, default="", help=command_list_help)
+target_command.add_argument("-L", "--commands-list", type=str, default="", help=command_list_help, completer=commands_list_names_completer)
 
 
 def _execute_command(connection, prompt, command):
@@ -104,7 +103,7 @@ def _execute_commands_list(connection, prompt, exec_commands):
         `_connect_to_device()` で取得した Netmiko 接続。
     prompt : str
         デバイスのプロンプト文字列（例: ``"R1#"``)
-    exec_commands : dict
+    exec_commands : list[str]
         get_validated_commands_listで取得したexec_command
 
 
@@ -147,7 +146,7 @@ def _execute_commands(connection, prompt, args, exec_commands):
         raise ValueError("command または commands_list のいずれかが必要ケロ🐸")
 
 
-def _handle_execution(device: dict, args, poutput, hostname):
+def _handle_execution(device: dict, args, poutput, hostname) -> str | None:
     """
     デバイス接続〜コマンド実行〜ログ保存までをまとめて処理するラッパー関数。
 
@@ -156,16 +155,21 @@ def _handle_execution(device: dict, args, poutput, hostname):
         args: コマンドライン引数
         poutput: cmd2 の出力関数
         hostname (str): ログファイル名などに使うホスト識別子
+    
+    Returns:
+        成功時 None
+        失敗時 hostname (str)
     """
 
     # ✅ 1. commands-list の存在チェック（必要なら）
+    result_output_string = ""
     exec_commands = None # args.commandのとき未定義になるため必要。
 
     try:
         if args.commands_list:
             exec_commands = get_validated_commands_list(args, device)
     except (FileNotFoundError, ValueError):
-        return
+        return hostname # 失敗時
 
     # ✅ 2. 接続とプロンプト取得
     try:
@@ -174,7 +178,7 @@ def _handle_execution(device: dict, args, poutput, hostname):
         prompt, hostname = get_prompt(connection)
     except ConnectionError as e:
         print_error(str(e))
-        return
+        return hostname # 失敗時
 
     # ✅ 3. コマンド実行（単発 or リスト）
     try:
@@ -182,7 +186,7 @@ def _handle_execution(device: dict, args, poutput, hostname):
     except (KeyError, ValueError) as e:
         print_error(str(e))
         connection.disconnect()
-        return
+        return hostname # 失敗時
 
     # ✅ 4. 接続終了
     connection.disconnect()
@@ -195,6 +199,7 @@ def _handle_execution(device: dict, args, poutput, hostname):
     print_info(f"NODE: {hostname} 📄OUTPUTケロ🐸")
     poutput(result_output_string)
     print_success(f"NODE: {hostname} 🔚実行完了ケロ🐸")
+    return None # 成功時
 
 
 @cmd2.with_argparser(netmiko_execute_parser)
@@ -206,7 +211,7 @@ def do_execute(self, args):
     ------------
     1. `--ip` 指定 → 単一デバイス  
     2. `--host`    → inventory から 1 台  
-    3. `--group`   → inventory グループ内の複数台（※並列化は今後）
+    3. `--group`   → inventory グループ内の複数台
 
     Notes
     -----
@@ -217,7 +222,9 @@ def do_execute(self, args):
 
     if args.ip:
         device, hostname = _build_device_and_hostname(args)
-        _handle_execution(device, args, self.poutput, hostname)
+        result_failed_hostname = _handle_execution(device, args, self.poutput, hostname)
+        if result_failed_hostname:
+            print_error(f"❎ 🐸なんかトラブルケロ@: {result_failed_hostname}")
         return
 
     if args.host or args.group: 
@@ -231,13 +238,17 @@ def do_execute(self, args):
     
     if args.host:
         device, hostname = _build_device_and_hostname(args, inventory_data)
-        _handle_execution(device, args, self.poutput, hostname)
+        result_failed_hostname = _handle_execution(device, args, self.poutput, hostname)
+        if result_failed_hostname:
+            print_error(f"❎ 🐸なんかトラブルケロ@: {result_failed_hostname}")
         return
 
     elif args.group:
         device_list, hostname_list = _build_device_and_hostname(args, inventory_data)
 
         max_workers = default_workers(len(device_list), args)
+
+        result_failed_hostname_list = []
 
         with ThreadPoolExecutor(max_workers=max_workers) as pool:
 
@@ -247,4 +258,16 @@ def do_execute(self, args):
                 futures.append(future)
 
             for future in as_completed(futures):
-                future.result()
+                try:
+                    result_failed_hostname = future.result()
+                    if result_failed_hostname:
+                        result_failed_hostname_list.append(result_failed_hostname)
+                except Exception as e:
+                    # _handle_configure で捕まえていない想定外の例外
+                    print_error(f"⚠️ 未処理の例外: {hostname}:{e}")
+
+        # 結果をまとめて表示
+        if result_failed_hostname_list:
+            print_warning(f"❎ 🐸なんかトラブルケロ: {', '.join(sorted(result_failed_hostname_list))}")
+        else:
+            print_success("✅ すべてのホストで実行完了ケロ🐸")
