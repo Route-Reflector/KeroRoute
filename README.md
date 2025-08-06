@@ -10,6 +10,8 @@ CLI-based network automation tool for lazy NetEngs 🐸
 > ⚠️ **This tool is under active development. Use at your own risk.**  
 >  開発中のツールです。不具合や仕様変更の可能性があります。
 
+> 🚀 [Click here for English version](README.en.md)
+
 
 ## KeroRouteとは
 
