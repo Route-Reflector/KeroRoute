@@ -144,6 +144,30 @@ def commands_list_names_completer(_self, text: str, line: str, _begidx, _endidx)
     return _match(names, text)
 
 
+def show_commands_list_names_completer(_self, text: str, line: str, begidx, endidx) -> List[str]:
+    # show --commands_list 用のcompleter
+
+    # shelxでコマンド全体をパース
+    try:
+        tokens = shlex.split(line)
+    except ValueError:
+        return []
+
+    # --commands-list の位置を探して、入力済み引数を取得！
+    try:
+        idx = tokens.index("--commands-list")
+        entered = tokens[idx + 1:]
+    except (ValueError, IndexError):
+        return []
+
+    if len(entered) == 0:
+        return device_types_completer(_self, text, line, begidx, endidx)
+    elif len(entered) == 1:
+        return commands_list_names_completer(_self, text, line, begidx, endidx)
+    else:
+        return []
+
+
 def config_list_names_completer(_self, text: str, line: str, _begidx, _endidx) -> List[str]:
     """
     line から --device_type の値を拾い、その配下の config_list 名を補完する。
@@ -182,3 +206,22 @@ def config_list_names_completer(_self, text: str, line: str, _begidx, _endidx) -
     # プレフィックス一致で絞り込み → ソート済み候補を返す
     return _match(names, text)
 
+
+def show_config_list_names_completer(_self, text, line, begidx, endidx):
+    try:
+        tokens = shlex.split(line)
+    except ValueError:
+        return []
+
+    try:
+        idx = tokens.index("--config-list")
+        entered = tokens[idx + 1:]
+    except (ValueError, IndexError):
+        return []
+
+    if len(entered) == 0:
+        return device_types_completer(_self, text, line, begidx, endidx)
+    elif len(entered) == 1:
+        return config_list_names_completer(_self, text, line, begidx, endidx)
+    else:
+        return []

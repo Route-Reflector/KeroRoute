@@ -21,6 +21,7 @@ import time
 
 from message import print_info, print_success, print_warning, print_error
 from utils import get_table_theme, get_panel_theme
+from completers import host_names_completer, group_names_completer, show_commands_list_names_completer, show_config_list_names_completer
 
 
 ######################
@@ -74,17 +75,17 @@ show_parser.add_argument("--keep-html", action="store_true", help=keep_html_help
 # mutually exclusive
 target_show = show_parser.add_mutually_exclusive_group(required=True)
 target_show.add_argument("--hosts", action="store_true", help=hosts_help)
-target_show.add_argument("--host", type=str, default="", help=host_help)
+target_show.add_argument("--host", type=str, default="", help=host_help, completer=host_names_completer)
 target_show.add_argument("--groups", action="store_true", help=groups_help)
-target_show.add_argument("--group", type=str, default="", help=group_help)
+target_show.add_argument("--group", type=str, default="", help=group_help, completer=group_names_completer)
 target_show.add_argument("--commands-lists", action="store_true", help=commands_lists_help)
-target_show.add_argument("--commands-list", nargs=2, metavar=("DEVICE_TYPE", "COMMAND_LIST"), help=commands_list_help)
+target_show.add_argument("--commands-list", nargs=2, metavar=("DEVICE_TYPE", "COMMAND_LIST"), help=commands_list_help, completer=show_commands_list_names_completer)
 target_show.add_argument("--logs", action="store_true", help=logs_help)
 target_show.add_argument("--log", type=str, default="execute", help=log_help)
 target_show.add_argument("--log-last", action="store_true", help=log_last_help)
 target_show.add_argument("--diff", nargs=2, metavar=("OLD_LOG", "NEW_LOG"), help=diff_help)
 target_show.add_argument("--config-lists", action="store_true", help=config_lists_help)
-target_show.add_argument("--config-list", nargs=2, metavar=("DEVICE_TYPE", "COMMAND_LIST"), help=config_list_help)
+target_show.add_argument("--config-list", nargs=2, metavar=("DEVICE_TYPE", "CONFIG_LIST"), help=config_list_help, completer=show_config_list_names_completer)
 
 
 def _show_hosts():
