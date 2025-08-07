@@ -21,7 +21,7 @@ import time
 
 from message import print_info, print_success, print_warning, print_error
 from utils import get_table_theme, get_panel_theme
-from completers import host_names_completer, group_names_completer, show_commands_list_names_completer, show_config_list_names_completer
+from completers import host_names_completer, group_names_completer, show_commands_list_names_completer, show_config_list_names_completer, show_log_filename_completer
 
 
 ######################
@@ -81,7 +81,7 @@ target_show.add_argument("--group", type=str, default="", help=group_help, compl
 target_show.add_argument("--commands-lists", action="store_true", help=commands_lists_help)
 target_show.add_argument("--commands-list", nargs=2, metavar=("DEVICE_TYPE", "COMMAND_LIST"), help=commands_list_help, completer=show_commands_list_names_completer)
 target_show.add_argument("--logs", action="store_true", help=logs_help)
-target_show.add_argument("--log", type=str, default="execute", help=log_help)
+target_show.add_argument("--log", type=str, default="execute", help=log_help, completer=show_log_filename_completer)
 target_show.add_argument("--log-last", action="store_true", help=log_last_help)
 target_show.add_argument("--diff", nargs=2, metavar=("OLD_LOG", "NEW_LOG"), help=diff_help)
 target_show.add_argument("--config-lists", action="store_true", help=config_lists_help)
@@ -359,7 +359,7 @@ def _show_logs(args):
     console = Console()
     today_str = datetime.now().strftime("%Y%m%d")
 
-    if args.mode in ("execute", "console", "configure"):
+    if args.mode in ("execute", "console", "configure", "scp"):
         log_mode_dir = Path("logs") / args.mode
     else: # 将来的に別のモードが必要になったときに実装予定。
         raise NotImplementedError(f"モード '{args.mode}' はまだ未対応ケロ🐸")
@@ -426,7 +426,7 @@ def _show_logs(args):
 
 def _show_log(args):
     if args.log:
-        if args.mode in ("execute", "console", "configure"):
+        if args.mode in ("execute", "console", "configure", "scp"):
             mode_dir = Path("logs") / args.mode  # e.g., logs/execute/
             target_dir = args.log[:8] # logファイルの最初の8文字を取得。
             log_path = mode_dir / target_dir / args.log       # e.g., logs/execute/20250508/filename.log
