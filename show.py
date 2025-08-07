@@ -452,6 +452,10 @@ def _show_diff(args):
 
     style = args.style
 
+    if args.mode not in ("execute", "console", "configure", "scp"):
+        print_error(f"未対応のモードケロ🐸: {args.mode}")
+        return
+
     mode_dir = Path("logs") /args.mode
     log1_path = mode_dir / args.diff[0][:8] / args.diff[0]
     log2_path = mode_dir / args.diff[1][:8] / args.diff[1]
@@ -468,8 +472,7 @@ def _show_diff(args):
         text_2= log_2.readlines()
 
 
-
-    if args.mode in ("execute", "console", "configure"):
+    if args.mode in ("execute", "console", "configure", "scp"):
         if style == "unified":
             diff_lines = list(difflib.unified_diff(text_1, text_2,
                                                 fromfile=args.diff[0],
