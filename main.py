@@ -30,13 +30,16 @@ startup_message = [
     "🐸 Idempotency not included. But Idempotency is always in YOU.",
     "🐸 We fix networks, not excel.",
     "🐸 The Network Automation will not be GUI-fied.",
-    "🐸 AI won’t replace your hands. It won’t replace SFPs either. You still have to.",
+    "🐸 AI won't replace your hands. It won't replace SFPs either. You still have to.",
     "🐸 KeroRoute -  From console to gNMI, and every leap in between.",
     "🐸 KeroRoute -  Still using SNMP ? SNMP has served for decades, Let it rest.",
     "🐸 KeroRoute -  Still using TELNET ? TELNET has served for decades, Let it rest.",
-    "🐸 Fancy dashboards can’t fix a mispatched port.",
+    "🐸 Fancy dashboards can't fix a mispatched port.",
     "🐸 No AI can replace on-site troubleshooting.",
     "🐸 Automation is great. So is zip-tying cables in a rack at 2AM.",
+    "🐸 Obsolete? That's just our afterimage as we leap ahead.",
+    "🐸 KeroRoute - The only network automation tool that affirms network engineers.",
+    "🐸 KeroRoute - Get on my back. We're leaping outta legacy hell"
     ]
 
 

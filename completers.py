@@ -144,6 +144,30 @@ def commands_list_names_completer(_self, text: str, line: str, _begidx, _endidx)
     return _match(names, text)
 
 
+def show_commands_list_names_completer(_self, text: str, line: str, begidx, endidx) -> List[str]:
+    # show --commands_list 用のcompleter
+
+    # shelxでコマンド全体をパース
+    try:
+        tokens = shlex.split(line)
+    except ValueError:
+        return []
+
+    # --commands-list の位置を探して、入力済み引数を取得！
+    try:
+        idx = tokens.index("--commands-list")
+        entered = tokens[idx + 1:]
+    except (ValueError, IndexError):
+        return []
+
+    if len(entered) == 0:
+        return device_types_completer(_self, text, line, begidx, endidx)
+    elif len(entered) == 1:
+        return commands_list_names_completer(_self, text, line, begidx, endidx)
+    else:
+        return []
+
+
 def config_list_names_completer(_self, text: str, line: str, _begidx, _endidx) -> List[str]:
     """
     line から --device_type の値を拾い、その配下の config_list 名を補完する。
@@ -182,3 +206,57 @@ def config_list_names_completer(_self, text: str, line: str, _begidx, _endidx) -
     # プレフィックス一致で絞り込み → ソート済み候補を返す
     return _match(names, text)
 
+
+def show_config_list_names_completer(_self, text, line, begidx, endidx):
+    try:
+        tokens = shlex.split(line)
+    except ValueError:
+        return []
+
+    try:
+        idx = tokens.index("--config-list")
+        entered = tokens[idx + 1:]
+    except (ValueError, IndexError):
+        return []
+
+    if len(entered) == 0:
+        return device_types_completer(_self, text, line, begidx, endidx)
+    elif len(entered) == 1:
+        return config_list_names_completer(_self, text, line, begidx, endidx)
+    else:
+        return []
+
+
+def show_log_filename_completer(_self, text, line, begidx, endidx):
+    # :TODO ログファイルの数が増えたときに1000個とか表示されてしまうので対策が必要。
+    # KeroRouteでは、ログファイル補完の候補リストは下に行くほど新しいものが表示される仕様です🐸📄✨
+    # 本当は上を最新にしたかったのですが、仕様上難しそうです。🐸📄✨
+    try:
+        tokens = shlex.split(line)
+    except ValueError:
+        return []
+
+    # デフォルトは execute
+    mode = "execute"
+
+    # --mode があれば抽出
+    if "--mode" in tokens:
+        try:
+            mode = tokens[tokens.index("--mode") + 1]
+        except IndexError:
+            pass
+
+    log_root = Path("logs") / mode
+    all_logs = sorted(log_root.glob("*/*.log"), key=lambda p: str(p.name), reverse=True)
+
+    # 🐸 NOTE: cmd2の補完順が勝手にソートされる問題への対策
+    # printを1回でも入れると、resultの順序がそのまま反映される不思議な仕様…
+    # 下のprint行をコメントアウトする、しないで昇順と降順が変わってしまう。
+    result = []
+    for log_path in all_logs:
+        if log_path.name.startswith(text):
+            # print(f"match: {log_path.name}")
+            result.append(log_path.name)
+        
+    return result
+    # return list(reversed(result))
