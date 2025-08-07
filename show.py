@@ -21,7 +21,7 @@ import time
 
 from message import print_info, print_success, print_warning, print_error
 from utils import get_table_theme, get_panel_theme
-from completers import host_names_completer, group_names_completer, show_commands_list_names_completer, show_config_list_names_completer, show_log_filename_completer
+from completers import host_names_completer, group_names_completer, show_commands_list_names_completer, show_config_list_names_completer, log_filename_completer
 
 
 ######################
@@ -81,9 +81,9 @@ target_show.add_argument("--group", type=str, default="", help=group_help, compl
 target_show.add_argument("--commands-lists", action="store_true", help=commands_lists_help)
 target_show.add_argument("--commands-list", nargs=2, metavar=("DEVICE_TYPE", "COMMAND_LIST"), help=commands_list_help, completer=show_commands_list_names_completer)
 target_show.add_argument("--logs", action="store_true", help=logs_help)
-target_show.add_argument("--log", type=str, default="execute", help=log_help, completer=show_log_filename_completer)
+target_show.add_argument("--log", type=str, default="execute", help=log_help, completer=log_filename_completer)
 target_show.add_argument("--log-last", action="store_true", help=log_last_help)
-target_show.add_argument("--diff", nargs=2, metavar=("OLD_LOG", "NEW_LOG"), help=diff_help)
+target_show.add_argument("--diff", nargs=2, metavar=("OLD_LOG", "NEW_LOG"), help=diff_help, completer=log_filename_completer)
 target_show.add_argument("--config-lists", action="store_true", help=config_lists_help)
 target_show.add_argument("--config-list", nargs=2, metavar=("DEVICE_TYPE", "CONFIG_LIST"), help=config_list_help, completer=show_config_list_names_completer)
 
@@ -452,6 +452,10 @@ def _show_diff(args):
 
     style = args.style
 
+    if args.mode not in ("execute", "console", "configure", "scp"):
+        print_error(f"未対応のモードケロ🐸: {args.mode}")
+        return
+
     mode_dir = Path("logs") /args.mode
     log1_path = mode_dir / args.diff[0][:8] / args.diff[0]
     log2_path = mode_dir / args.diff[1][:8] / args.diff[1]
@@ -468,8 +472,7 @@ def _show_diff(args):
         text_2= log_2.readlines()
 
 
-
-    if args.mode in ("execute", "console", "configure"):
+    if args.mode in ("execute", "console", "configure", "scp"):
         if style == "unified":
             diff_lines = list(difflib.unified_diff(text_1, text_2,
                                                 fromfile=args.diff[0],
