@@ -227,10 +227,12 @@ def show_config_list_names_completer(_self, text, line, begidx, endidx):
         return []
 
 
-def show_log_filename_completer(_self, text, line, begidx, endidx):
+def log_filename_completer(_self, text, line, begidx, endidx):
     # :TODO ログファイルの数が増えたときに1000個とか表示されてしまうので対策が必要。
     # KeroRouteでは、ログファイル補完の候補リストは下に行くほど新しいものが表示される仕様です🐸📄✨
     # 本当は上を最新にしたかったのですが、仕様上難しそうです。🐸📄✨
+    # NOTE: nargs=2 でも2つ目の補完が効いているが、cmd2の挙動によるラッキーな仕様かもしれない🐸
+    # 必要なら将来的に「引数位置に応じた補完ロジック」を検討すること。
     try:
         tokens = shlex.split(line)
     except ValueError:
