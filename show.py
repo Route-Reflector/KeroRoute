@@ -87,7 +87,7 @@ target_show.add_argument("--group", type=str, default="", help=group_help, compl
 target_show.add_argument("--commands-lists", action="store_true", help=commands_lists_help)
 target_show.add_argument("--commands-list", nargs=2, metavar=("DEVICE_TYPE", "COMMAND_LIST"), help=commands_list_help, completer=show_commands_list_names_completer)
 target_show.add_argument("--logs", action="store_true", help=logs_help)
-target_show.add_argument("--log", type=str, default="execute", help=log_help, completer=log_filename_completer)
+target_show.add_argument("--log", type=str, default="", help=log_help, completer=log_filename_completer)
 target_show.add_argument("--log-last", action="store_true", help=log_last_help)
 target_show.add_argument("--diff", nargs=2, metavar=("OLD_LOG", "NEW_LOG"), help=diff_help, completer=log_filename_completer)
 target_show.add_argument("--config-lists", action="store_true", help=config_lists_help)
@@ -590,9 +590,9 @@ def do_show(self, args):
     elif args.config_list:
         device_type, config_list = args.config_list
         _show_config_list(device_type, config_list)
+    elif args.log_last:
+        _show_log_last(args)
     elif args.logs:
         _show_logs(args)
     elif args.log:
         _show_log(args)
-    elif args.log_last:
-        _show_log_last(args)
