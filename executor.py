@@ -1,4 +1,5 @@
 import argparse
+from time import perf_counter
 import cmd2
 from cmd2 import Cmd2ArgumentParser
 from message import print_info, print_success, print_warning, print_error
@@ -46,6 +47,7 @@ workers_help = ("並列実行するワーカースレッド数を指定します
                 "そこにも設定が無いときは、グループ台数と 規定上限([bright_blue]DEFAULT_MAX_WORKERS[/bright_blue]) の小さい方が自動で採用されます。\n\n")
 secret_help = ("enable に入るための secret を指定します。(省略時は password を流用します。)\n"
                "--ip 専用。--host | --group 指定時は [green]inventory.yaml[/green] の値を使用します。\n\n")
+no_output_help = ("画面表示をしない場合に使用します。画面上のoutputを抑制します。--logオプションと一緒に使用します。")
 
 
 ######################
@@ -63,6 +65,7 @@ netmiko_execute_parser.add_argument("-l", "--log", action="store_true", help=log
 netmiko_execute_parser.add_argument("-m", "--memo", type=str, default="", help=memo_help)
 netmiko_execute_parser.add_argument("-w", "--workers", type=int, default=None, metavar="N", help=workers_help)
 netmiko_execute_parser.add_argument("-s", "--secret", type=str, default="", help=secret_help)
+netmiko_execute_parser.add_argument("--no-output", action="store_true", help=no_output_help)
 
 # mutually exclusive
 target_node = netmiko_execute_parser.add_mutually_exclusive_group(required=True)
@@ -77,15 +80,22 @@ target_command.add_argument("-L", "--commands-list", type=str, default="", help=
 
 def _execute_command(connection, prompt, command):
     """
-    単一コマンドをNetmikoで実行し、プロンプト付きで出力を整形して返す。
+    単一コマンドを Netmiko で実行し、プロンプト＋コマンド＋出力を 1 つの文字列に整形して返す。
 
-    Args:
-        connection: Netmikoの接続オブジェクト
-        prompt (str): コマンド実行時のプロンプト
-        command (str): 実行するコマンド
+    Parameters
+    ----------
+    connection : BaseConnection
+        `connect_to_device()` で取得した Netmiko 接続。
+    prompt : str
+        コマンド実行時に表示するプロンプト文字列（例: "R1#").
+        実装上、enable 前後の差異を吸収するため `find_prompt()` により再取得することがある。
+    command : str
+        実行するコマンド。
 
-    Returns:
-        str: 実行結果（プロンプト＋コマンド＋出力）
+    Returns
+    -------
+    str
+        "{prompt} {command}\\n{device_output}\\n" 形式のテキスト。
     """
     prompt = connection.find_prompt()
     output = connection.send_command(command)
@@ -95,48 +105,59 @@ def _execute_command(connection, prompt, command):
 
 def _execute_commands_list(connection, prompt, exec_commands):
     """
-    commands-lists.yaml で定義された「コマンドリスト」を順次実行する。
+    commands-lists.yaml で定義されたコマンド列を順次実行し、各結果を連結して返す。
 
     Parameters
     ----------
     connection : BaseConnection
-        `_connect_to_device()` で取得した Netmiko 接続。
+        `connect_to_device()` で取得した Netmiko 接続。
     prompt : str
-        デバイスのプロンプト文字列（例: ``"R1#"``)
+        実行時に先頭へ付与するプロンプト文字列（例: "R1#").
+        実装上、必要に応じて `find_prompt()` で再取得する。
     exec_commands : list[str]
-        get_validated_commands_listで取得したexec_command
-
+        `get_validated_commands_list()` で取得したコマンドのリスト。
 
     Returns
     -------
     str
-        各コマンド実行結果を改行で連結したテキスト。
+        各コマンドの "{prompt} {command}\\n{output}\\n" を連結したテキスト。
+        （各要素は末尾改行を含むため、連結は空文字 join で行う）
     """
     full_output_list = []
+    prompt = connection.find_prompt()
 
     for command in exec_commands:
         output = connection.send_command(command)
         full_output = f"{prompt} {command}\n{output}\n"
         full_output_list.append(full_output)
     
-    return "\n".join(full_output_list)
+    return "".join(full_output_list)
 
 
 def _execute_commands(connection, prompt, args, exec_commands):
     """
-    指定されたコマンド（単発 or コマンドリスト）を実行し、出力を返すラッパー関数。
+    単発コマンド（--command）またはコマンドリスト（--commands-list）を実行し、結果を返すラッパー関数。
 
-    Args:
-        connection: Netmikoの接続オブジェクト
-        prompt (str): デバイスのプロンプト（例: "R1#"）
-        args: コマンドライン引数（args.command または args.commands_list を含む）
-        exec_command (dict): get_validated_commands_listで取得したexec_command
+    Parameters
+    ----------
+    connection : BaseConnection
+        `connect_to_device()` で取得した Netmiko 接続。
+    prompt : str
+        デバイスのプロンプト（例: "R1#").
+    args : argparse.Namespace
+        引数オブジェクト（args.command または args.commands_list を持つ）。
+    exec_commands : list[str] | None
+        コマンドリスト実行時に使用するコマンド配列。単発コマンド時は None。
 
-    Returns:
-        str: 実行結果（複数コマンドの場合は結合済み出力）
+    Returns
+    -------
+    str
+        実行結果テキスト。
 
-    Raises:
-        ValueError: args.command または args.commands_list のいずれも指定されていない場合
+    Raises
+    ------
+    ValueError
+        args.command と args.commands_list のいずれも指定されていない場合。
     """
     if args.command:
         return _execute_command(connection, prompt, args.command)
@@ -160,24 +181,35 @@ def _handle_execution(device: dict, args, poutput, hostname) -> str | None:
         成功時 None
         失敗時 hostname (str)
     """
-
+    timer = perf_counter() # ⌚ start
     # ✅ 1. commands-list の存在チェック（必要なら）
     result_output_string = ""
     exec_commands = None # args.commandのとき未定義になるため必要。
 
+    if args.no_output and not args.log:
+        print_error("--no-outputオプションを使用するには--logが必要です。")
+        elapsed = perf_counter() - timer
+        print_warning(f"NODE: {hostname} ❌中断ケロ🐸 (elapsed: {elapsed:.2f}s)")
+        return hostname # 失敗時
+
     try:
         if args.commands_list:
             exec_commands = get_validated_commands_list(args, device)
-    except (FileNotFoundError, ValueError):
+    except (FileNotFoundError, ValueError) as e:
+        print_error(str(e))
+        elapsed = perf_counter() - timer
+        print_warning(f"NODE: {hostname} ❌中断ケロ🐸 (elapsed: {elapsed:.2f}s)")
         return hostname # 失敗時
 
     # ✅ 2. 接続とプロンプト取得
     try:
         connection = connect_to_device(device, hostname)
-        print_success(f"NODE: {hostname} 🔗接続成功ケロ🐸")
         prompt, hostname = get_prompt(connection)
+        print_success(f"NODE: {hostname} 🔗接続成功ケロ🐸")
     except ConnectionError as e:
         print_error(str(e))
+        elapsed = perf_counter() - timer
+        print_warning(f"NODE: {hostname} ❌中断ケロ🐸 (elapsed: {elapsed:.2f}s)")
         return hostname # 失敗時
 
     # ✅ 3. コマンド実行（単発 or リスト）
@@ -185,6 +217,8 @@ def _handle_execution(device: dict, args, poutput, hostname) -> str | None:
         result_output_string = _execute_commands(connection, prompt, args, exec_commands)
     except (KeyError, ValueError) as e:
         print_error(str(e))
+        elapsed = perf_counter() - timer
+        print_warning(f"NODE: {hostname} ❌中断ケロ🐸 (elapsed: {elapsed:.2f}s)")
         connection.disconnect()
         return hostname # 失敗時
 
@@ -196,9 +230,13 @@ def _handle_execution(device: dict, args, poutput, hostname) -> str | None:
         _save_log(result_output_string, hostname, args)
 
     # ✅ 6. 結果表示
-    print_info(f"NODE: {hostname} 📄OUTPUTケロ🐸")
-    poutput(result_output_string)
-    print_success(f"NODE: {hostname} 🔚実行完了ケロ🐸")
+    if args.no_output:
+        print_info(f"NODE: {hostname} 📄OUTPUTは省略するケロ (hidden by --no-output) 🐸")
+    else:
+        print_info(f"NODE: {hostname} 📄OUTPUTケロ🐸")
+        poutput(result_output_string)
+    elapsed = perf_counter() - timer
+    print_success(f"NODE: {hostname} 🔚実行完了ケロ🐸 (elapsed: {elapsed:.2f}s)")
     return None # 成功時
 
 
@@ -253,17 +291,20 @@ def do_execute(self, args):
         with ThreadPoolExecutor(max_workers=max_workers) as pool:
 
             futures = []
+            future_to_hostname = {} 
             for device, hostname in zip(device_list, hostname_list):
                 future = pool.submit(_handle_execution, device, args, self.poutput, hostname)
                 futures.append(future)
+                future_to_hostname[future] = hostname
 
             for future in as_completed(futures):
+                hostname = future_to_hostname.get(future, "UNKNOWN")
                 try:
                     result_failed_hostname = future.result()
                     if result_failed_hostname:
                         result_failed_hostname_list.append(result_failed_hostname)
                 except Exception as e:
-                    # _handle_configure で捕まえていない想定外の例外
+                    # _handle_execution で捕まえていない想定外の例外
                     print_error(f"⚠️ 未処理の例外: {hostname}:{e}")
 
         # 結果をまとめて表示
