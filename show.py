@@ -371,7 +371,7 @@ def _show_logs(args):
 # KeroRoute全体の設定ファイルが必要かも。ログの表示件数とか。
 
     if args.logs:
-        if args.mode in ("execute", "console", "configure"):
+        if args.mode in ("execute", "console", "configure", "scp"):
             if args.date:
                 date_str = args.date
                 date_dir = log_mode_dir / date_str
