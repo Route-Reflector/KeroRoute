@@ -24,6 +24,12 @@ from utils import get_table_theme, get_panel_theme
 from completers import host_names_completer, group_names_completer, show_commands_list_names_completer, show_config_list_names_completer, log_filename_completer
 
 
+#######################
+###  CONST_SECTION  ### 
+#######################
+MODE = ["execute", "console", "configure", "scp"]
+
+
 ######################
 ###  HELP_SECTION  ### 
 ######################
@@ -519,6 +525,48 @@ def _show_diff(args):
         print_error(f"未対応のモードケロ🐸: {args.mode}")
 
 
+def _find_latest_log_path(mode: str) -> Path | None:
+
+    mode_dir = Path("logs") / mode
+    candidates_dirs = sorted(mode_dir.glob("*")) # 日付dirを取得してソート
+    if not candidates_dirs:
+        return None
+    
+    latest_date_dir = candidates_dirs[-1] # ソート済みのリストの最後の要素が最新
+    
+    # 最新の日付ディレクトリ内のログファイルを取得
+    log_files = sorted(latest_date_dir.glob("*.log")) # ここもソート
+    
+    if not log_files:
+        return None
+        
+    return log_files[-1] # 最新のログファイルを返す
+
+
+def _show_log_last(args):
+    """--log-last, 最新のログ1件を less -R で表示する。"""
+    # :NOTE windows対応のときに影響あり。
+    mode = "execute"
+    if args.mode:
+        mode = args.mode
+    if mode not in MODE:
+        print_error(f"未対応のモードケロ🐸: {mode}")
+        return
+    
+    latest_log = _find_latest_log_path(mode)
+
+    if latest_log is None:
+        print_info("📭 表示できるログが見つからないケロ🐸")
+        return
+    
+    print_info(f"🕒 最新ログを表示するケロ🐸 → {latest_log}")
+    try:
+        content = latest_log.read_text()
+        subprocess.run(["less", "-R"], input=content.encode(), check=True)
+    except Exception as e:
+        print_error(f"lessの表示に失敗したケロ🐸: {e}")
+
+
 
 @cmd2.with_argparser(show_parser)
 def do_show(self, args):
@@ -546,3 +594,5 @@ def do_show(self, args):
         _show_logs(args)
     elif args.log:
         _show_log(args)
+    elif args.log_last:
+        _show_log_last(args)
