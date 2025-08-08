@@ -66,7 +66,7 @@ keep_html_help = "HTMLファイルを削除せずに残すケロ🐸"
 show_parser = argparse.ArgumentParser(formatter_class=argparse.RawTextHelpFormatter)
 # "-h" はhelpと競合するから使えない。
 
-show_parser.add_argument("-m", "--mode", type=str, default="execute", help=mode_help)
+show_parser.add_argument("-m", "--mode", type=str, default="execute", choices=["execute", "console", "configure","scp"], help=mode_help)
 show_parser.add_argument("-d", "--date", type=str, default="", help=date_help)
 show_parser.add_argument("--style", type=str, default="unified", choices=["unified", "side-by-side", "html"], help=style_help)
 show_parser.add_argument("--keep-html", action="store_true", help=keep_html_help)
