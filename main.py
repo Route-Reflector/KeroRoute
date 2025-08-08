@@ -25,7 +25,7 @@ startup_message = [
     "🐸 KeroRoute - A Network Automation Tool for the Rest of Us.",
     "🐸 KeroRoute - For Network Engineers, Not For Architects.",
     "🐸 Just leap forward. Like a frog.",
-    "🐸 An***le is Fake. KeroRoute is Real.",
+    "🐸 Closed Galaxy is Fake. Open Swamp is Real.",
     "🐸 What network engineers really needed.",
     "🐸 Idempotency not included. But Idempotency is always in YOU.",
     "🐸 We fix networks, not excel.",
