@@ -47,7 +47,8 @@ workers_help = ("並列実行するワーカースレッド数を指定します
                 "そこにも設定が無いときは、グループ台数と 規定上限([bright_blue]DEFAULT_MAX_WORKERS[/bright_blue]) の小さい方が自動で採用されます。\n\n")
 secret_help = ("enable に入るための secret を指定します。(省略時は password を流用します。)\n"
                "--ip 専用。--host | --group 指定時は [green]inventory.yaml[/green] の値を使用します。\n\n")
-no_output_help = ("画面表示をしない場合に使用します。画面上のoutputを抑制します。--logオプションと一緒に使用します。")
+quiet_help = ("画面上の出力（nodeのcommandの結果）を抑制します。進捗・エラーは表示されます。このオプションを使う場合は --log が必須です。")
+no_output_help = ("画面上の出力を完全に抑制します（進捗・エラーも表示しません）。 --log が未指定の場合は実行を中止します。")
 
 
 ######################
@@ -65,7 +66,7 @@ netmiko_execute_parser.add_argument("-l", "--log", action="store_true", help=log
 netmiko_execute_parser.add_argument("-m", "--memo", type=str, default="", help=memo_help)
 netmiko_execute_parser.add_argument("-w", "--workers", type=int, default=None, metavar="N", help=workers_help)
 netmiko_execute_parser.add_argument("-s", "--secret", type=str, default="", help=secret_help)
-netmiko_execute_parser.add_argument("--no-output", action="store_true", help=no_output_help)
+
 
 # mutually exclusive
 target_node = netmiko_execute_parser.add_mutually_exclusive_group(required=True)
@@ -77,6 +78,9 @@ target_command = netmiko_execute_parser.add_mutually_exclusive_group(required=Tr
 target_command.add_argument("-c", "--command", type=str, default="", help=command_help)
 target_command.add_argument("-L", "--commands-list", type=str, default="", help=command_list_help, completer=commands_list_names_completer)
 
+silence_group = netmiko_execute_parser.add_mutually_exclusive_group(required=False)
+silence_group.add_argument("--quiet", action="store_true", help=quiet_help)
+silence_group.add_argument("--no-output", action="store_true", help=no_output_help)
 
 def _execute_command(connection, prompt, command):
     """
@@ -186,39 +190,37 @@ def _handle_execution(device: dict, args, poutput, hostname) -> str | None:
     result_output_string = ""
     exec_commands = None # args.commandのとき未定義になるため必要。
 
-    if args.no_output and not args.log:
-        print_error("--no-outputオプションを使用するには--logが必要です。")
-        elapsed = perf_counter() - timer
-        print_warning(f"NODE: {hostname} ❌中断ケロ🐸 (elapsed: {elapsed:.2f}s)")
-        return hostname # 失敗時
-
     try:
         if args.commands_list:
             exec_commands = get_validated_commands_list(args, device)
     except (FileNotFoundError, ValueError) as e:
-        print_error(str(e))
-        elapsed = perf_counter() - timer
-        print_warning(f"NODE: {hostname} ❌中断ケロ🐸 (elapsed: {elapsed:.2f}s)")
+        if not args.no_output:
+            print_error(str(e))
+            elapsed = perf_counter() - timer
+            print_warning(f"NODE: {hostname} ❌中断ケロ🐸 (elapsed: {elapsed:.2f}s)")
         return hostname # 失敗時
 
     # ✅ 2. 接続とプロンプト取得
     try:
         connection = connect_to_device(device, hostname)
         prompt, hostname = get_prompt(connection)
-        print_success(f"NODE: {hostname} 🔗接続成功ケロ🐸")
+        if not args.no_output:
+            print_success(f"NODE: {hostname} 🔗接続成功ケロ🐸")
     except ConnectionError as e:
-        print_error(str(e))
-        elapsed = perf_counter() - timer
-        print_warning(f"NODE: {hostname} ❌中断ケロ🐸 (elapsed: {elapsed:.2f}s)")
+        if not args.no_output:
+            print_error(str(e))
+            elapsed = perf_counter() - timer
+            print_warning(f"NODE: {hostname} ❌中断ケロ🐸 (elapsed: {elapsed:.2f}s)")
         return hostname # 失敗時
 
     # ✅ 3. コマンド実行（単発 or リスト）
     try:
         result_output_string = _execute_commands(connection, prompt, args, exec_commands)
     except (KeyError, ValueError) as e:
-        print_error(str(e))
-        elapsed = perf_counter() - timer
-        print_warning(f"NODE: {hostname} ❌中断ケロ🐸 (elapsed: {elapsed:.2f}s)")
+        if not args.no_output:
+            print_error(str(e))
+            elapsed = perf_counter() - timer
+            print_warning(f"NODE: {hostname} ❌中断ケロ🐸 (elapsed: {elapsed:.2f}s)")
         connection.disconnect()
         return hostname # 失敗時
 
@@ -230,13 +232,15 @@ def _handle_execution(device: dict, args, poutput, hostname) -> str | None:
         _save_log(result_output_string, hostname, args)
 
     # ✅ 6. 結果表示
-    if args.no_output:
-        print_info(f"NODE: {hostname} 📄OUTPUTは省略するケロ (hidden by --no-output) 🐸")
-    else:
-        print_info(f"NODE: {hostname} 📄OUTPUTケロ🐸")
-        poutput(result_output_string)
+    if not args.no_output:
+        if args.quiet:
+            print_info(f"NODE: {hostname} 📄OUTPUTは省略するケロ (hidden by --quiet) 🐸")
+        else:
+            print_info(f"NODE: {hostname} 📄OUTPUTケロ🐸")
+            poutput(result_output_string)
     elapsed = perf_counter() - timer
-    print_success(f"NODE: {hostname} 🔚実行完了ケロ🐸 (elapsed: {elapsed:.2f}s)")
+    if not args.no_output:
+        print_success(f"NODE: {hostname} 🔚実行完了ケロ🐸 (elapsed: {elapsed:.2f}s)")
     return None # 成功時
 
 
@@ -258,10 +262,18 @@ def do_execute(self, args):
       すべての内部関数にこれを渡してカラー表示や装飾を統一している。
     """
 
+    if args.quiet and not args.log:
+        print_error("--quietオプションを使用するには--logが必要ケロ🐸")
+        return
+    elif args.no_output and not args.log:
+        # 現仕様：完全サイレント。黙って終了（将来 notify 実装時に or を足すだけでOK）
+        return
+
+
     if args.ip:
         device, hostname = _build_device_and_hostname(args)
         result_failed_hostname = _handle_execution(device, args, self.poutput, hostname)
-        if result_failed_hostname:
+        if result_failed_hostname and not args.no_output:
             print_error(f"❎ 🐸なんかトラブルケロ@: {result_failed_hostname}")
         return
 
@@ -270,14 +282,15 @@ def do_execute(self, args):
             inventory_data = get_validated_inventory_data(host=args.host, group=args.group)
         
         except (FileNotFoundError, ValueError) as e:
-            print_error(str(e))
+            if not args.no_output:
+                print_error(str(e))
             return
         
     
     if args.host:
         device, hostname = _build_device_and_hostname(args, inventory_data)
         result_failed_hostname = _handle_execution(device, args, self.poutput, hostname)
-        if result_failed_hostname:
+        if result_failed_hostname and not args.no_output:
             print_error(f"❎ 🐸なんかトラブルケロ@: {result_failed_hostname}")
         return
 
@@ -305,10 +318,12 @@ def do_execute(self, args):
                         result_failed_hostname_list.append(result_failed_hostname)
                 except Exception as e:
                     # _handle_execution で捕まえていない想定外の例外
-                    print_error(f"⚠️ 未処理の例外: {hostname}:{e}")
+                    if not args.no_output:
+                        print_error(f"⚠️ 未処理の例外: {hostname}:{e}")
 
         # 結果をまとめて表示
-        if result_failed_hostname_list:
+        if result_failed_hostname_list and not args.no_output:
             print_warning(f"❎ 🐸なんかトラブルケロ: {', '.join(sorted(result_failed_hostname_list))}")
         else:
-            print_success("✅ すべてのホストで実行完了ケロ🐸")
+            if not args.no_output:
+                print_success("✅ すべてのホストで実行完了ケロ🐸")

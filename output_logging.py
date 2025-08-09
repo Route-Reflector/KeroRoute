@@ -16,7 +16,7 @@ def sanitize_filename(text: str) -> str:
     return re.sub(r'[\\/:*?"<>|]', '_', text).strip()
 
 
-def _save_log(result_output_string: str, hostname: str, args, mode: str = "execute") -> str | None:
+def _save_log(result_output_string: str, hostname: str, args, mode: str = "execute") -> Path | None:
     """
     実行結果を日時付きファイルに保存するユーティリティ。
 
@@ -54,11 +54,15 @@ def _save_log(result_output_string: str, hostname: str, args, mode: str = "execu
         raise ValueError(msg)
     
     if args.log:
-        print_info("💾ログ保存モードONケロ🐸🔛")
-        date_str = datetime.now().strftime("%Y%m%d")
+        if not args.no_output:
+            print_info("💾ログ保存モードONケロ🐸🔛")
+        
+        now = datetime.now()
+        date_str = now.strftime("%Y%m%d")
+        timestamp = now.strftime("%Y%m%d-%H%M%S")
+        
         log_dir = Path("logs") / mode / date_str
         log_dir.mkdir(parents=True, exist_ok=True)
-        timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
 
         # sanitized_commandの中にコマンド以外を入れてるから変数名を変えた方が良いかも。
         if mode == "configure":
@@ -82,7 +86,8 @@ def _save_log(result_output_string: str, hostname: str, args, mode: str = "execu
             else:
                 sanitized_command = sanitize_filename(args.commands_list)
         else:
-            raise ValueError("args.command または args.commands_list のどちらかが必須ケロ！🐸")
+            if not args.no_output:
+                raise ValueError("args.command または args.commands_list のどちらかが必須ケロ！🐸")
 
         if args.memo == "":
             file_name = f"{timestamp}_{hostname}_{sanitized_command}.log"
@@ -98,4 +103,5 @@ def _save_log(result_output_string: str, hostname: str, args, mode: str = "execu
 
         with open(log_path, "w") as log_file:
             log_file.write(result_output_string)
-            print_success(f"💾ログ保存完了ケロ🐸⏩⏩⏩ {log_path}")
+            if not args.no_output:
+                print_success(f"💾ログ保存完了ケロ🐸⏩⏩⏩ {log_path}")
