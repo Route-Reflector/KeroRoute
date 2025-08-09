@@ -64,36 +64,47 @@ def _save_log(result_output_string: str, hostname: str, args, mode: str = "execu
         log_dir = Path("logs") / mode / date_str
         log_dir.mkdir(parents=True, exist_ok=True)
 
-        # sanitized_commandの中にコマンド以外を入れてるから変数名を変えた方が良いかも。
+        log_base_name: str | None = None
+
         if mode == "configure":
-            sanitized_command = sanitize_filename(args.config_list)
+            log_base_name = sanitize_filename(args.config_list)
         elif mode == "scp":        
             scp_file_name = Path(args.src).name
             if args.put:
-                sanitized_command = sanitize_filename(f"SCP_PUT_{scp_file_name}")
+                log_base_name = sanitize_filename(f"SCP_PUT_{scp_file_name}")
             elif args.get:
-                sanitized_command = sanitize_filename(f"SCP_GET_{scp_file_name}")
+                log_base_name = sanitize_filename(f"SCP_GET_{scp_file_name}")
+            else:
+                raise ValueError("SCPモードでは --put または --get のどちらかを指定する必要があるケロ🐸")
         elif mode == "login":
-            sanitized_command = sanitize_filename(f"LOGIN")
+            log_base_name = "LOGIN"
         elif args.command:
             if mode == "console":
-                sanitized_command = sanitize_filename(f"{args.command}_by_console")
+                log_base_name = sanitize_filename(f"{args.command}_by_console")
             else:
-                sanitized_command = sanitize_filename(args.command)
+                log_base_name = sanitize_filename(args.command)
         elif args.commands_list:
             if mode == "console":
-                sanitized_command = sanitize_filename(f"{args.commands_list}_by_console")
+                log_base_name = sanitize_filename(f"{args.commands_list}_by_console")
             else:
-                sanitized_command = sanitize_filename(args.commands_list)
+                log_base_name = sanitize_filename(args.commands_list)
         else:
             if not args.no_output:
                 raise ValueError("args.command または args.commands_list のどちらかが必須ケロ！🐸")
+            else:
+                return None
+        
+        if not log_base_name:
+            if not args.no_output:
+                raise ValueError("ログファイル名が決定できなかったケロ🐸")
+            else:
+                return None
 
         if args.memo == "":
-            file_name = f"{timestamp}_{hostname}_{sanitized_command}.log"
+            file_name = f"{timestamp}_{hostname}_{log_base_name}.log"
         else:
             sanitized_memo = sanitize_filename(args.memo)
-            file_name = f"{timestamp}_{hostname}_{sanitized_command}_{sanitized_memo}.log"
+            file_name = f"{timestamp}_{hostname}_{log_base_name}_{sanitized_memo}.log"
         
         log_path = log_dir / file_name
 
@@ -101,7 +112,7 @@ def _save_log(result_output_string: str, hostname: str, args, mode: str = "execu
         if mode == "login":
             return log_path
 
-        with open(log_path, "w") as log_file:
+        with open(log_path, "w", encoding="utf-8") as log_file:
             log_file.write(result_output_string)
             if not args.no_output:
                 print_success(f"💾ログ保存完了ケロ🐸⏩⏩⏩ {log_path}")
