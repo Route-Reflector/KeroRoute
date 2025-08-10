@@ -49,6 +49,7 @@ secret_help = ("enable に入るための secret を指定します。(省略時
                "--ip 専用。--host | --group 指定時は [green]inventory.yaml[/green] の値を使用します。\n\n")
 quiet_help = ("画面上の出力（nodeのcommandの結果）を抑制します。進捗・エラーは表示されます。このオプションを使う場合は --log が必須です。")
 no_output_help = ("画面上の出力を完全に抑制します（進捗・エラーも表示しません）。 --log が未指定の場合は実行を中止します。")
+ordered_help = ("--group指定時にoutputの順番を昇順に並べ変えます。 このoptionを使用しない場合は実行完了順に表示されます。--group 未指定の場合は実行を中止します。")
 
 
 ######################
@@ -66,6 +67,7 @@ netmiko_execute_parser.add_argument("-l", "--log", action="store_true", help=log
 netmiko_execute_parser.add_argument("-m", "--memo", type=str, default="", help=memo_help)
 netmiko_execute_parser.add_argument("-w", "--workers", type=int, default=None, metavar="N", help=workers_help)
 netmiko_execute_parser.add_argument("-s", "--secret", type=str, default="", help=secret_help)
+netmiko_execute_parser.add_argument("-o", "--ordered", action="store_true", help=ordered_help)
 
 
 # mutually exclusive
@@ -171,7 +173,7 @@ def _execute_commands(connection, prompt, args, exec_commands):
         raise ValueError("command または commands_list のいずれかが必要ケロ🐸")
 
 
-def _handle_execution(device: dict, args, poutput, hostname) -> str | None:
+def _handle_execution(device: dict, args, poutput, hostname, output_buffers: dict | None = None) -> str | None:
     """
     デバイス接続〜コマンド実行〜ログ保存までをまとめて処理するラッパー関数。
 
@@ -231,13 +233,18 @@ def _handle_execution(device: dict, args, poutput, hostname) -> str | None:
     if args.log:
         _save_log(result_output_string, hostname, args)
 
+    # ordered option用の貯める処理。(quiet | no-outputのときは貯めない。)
+    if output_buffers is not None and args.group and args.ordered and not args.no_output and not args.quiet:
+        output_buffers[hostname] = result_output_string
+
     # ✅ 6. 結果表示
     if not args.no_output:
         if args.quiet:
             print_info(f"NODE: {hostname} 📄OUTPUTは省略するケロ (hidden by --quiet) 🐸")
         else:
-            print_info(f"NODE: {hostname} 📄OUTPUTケロ🐸")
-            poutput(result_output_string)
+            if not (args.group and args.ordered and output_buffers is not None):
+                print_info(f"NODE: {hostname} 📄OUTPUTケロ🐸")
+                poutput(result_output_string)
     elapsed = perf_counter() - timer
     if not args.no_output:
         print_success(f"NODE: {hostname} 🔚実行完了ケロ🐸 (elapsed: {elapsed:.2f}s)")
@@ -261,6 +268,9 @@ def do_execute(self, args):
     - `cmd2` では ``self.poutput`` が標準出力をラップしているため、
       すべての内部関数にこれを渡してカラー表示や装飾を統一している。
     """
+    if args.ordered and not args.group:
+        print_error("--ordered は --group 指定時のみ使用できるケロ🐸")
+        return
 
     if args.quiet and not args.log:
         print_error("--quietオプションを使用するには--logが必要ケロ🐸")
@@ -301,12 +311,24 @@ def do_execute(self, args):
 
         result_failed_hostname_list = []
 
+        # ✅ --ordered 用の本文バッファ（hostname -> str）
+        ordered_output_buffers = {}  # {hostname: collected_output}
+
         with ThreadPoolExecutor(max_workers=max_workers) as pool:
 
             futures = []
             future_to_hostname = {} 
+
+            ordered_output_enabled =  args.ordered and not args.quiet and not args.no_output
+
             for device, hostname in zip(device_list, hostname_list):
-                future = pool.submit(_handle_execution, device, args, self.poutput, hostname)
+                # --orderedがあって--quietと--no_outputがないこと。
+                if ordered_output_enabled:
+                    # 順番を並び替えるために貯める。
+                    future = pool.submit(_handle_execution, device, args, self.poutput, hostname, ordered_output_buffers)
+                else:
+                    future = pool.submit(_handle_execution, device, args, self.poutput, hostname)
+                
                 futures.append(future)
                 future_to_hostname[future] = hostname
 
@@ -320,6 +342,12 @@ def do_execute(self, args):
                     # _handle_execution で捕まえていない想定外の例外
                     if not args.no_output:
                         print_error(f"⚠️ 未処理の例外: {hostname}:{e}")
+        
+        # --orderedの場合は、ここで実行結果をまとめて表示する。
+        if ordered_output_enabled:
+            for h in sorted(ordered_output_buffers.keys(), key=lambda x: (x is None, x or "")):
+                print_info(f"NODE: {h} 📄OUTPUTケロ🐸")
+                self.poutput(ordered_output_buffers[h])
 
         # 結果をまとめて表示
         if result_failed_hostname_list and not args.no_output:
