@@ -1,5 +1,7 @@
 import argparse
 from time import perf_counter
+import typing
+import json
 import cmd2
 from cmd2 import Cmd2ArgumentParser
 from message import print_info, print_success, print_warning, print_error
@@ -50,6 +52,7 @@ secret_help = ("enable に入るための secret を指定します。(省略時
 quiet_help = ("画面上の出力（nodeのcommandの結果）を抑制します。進捗・エラーは表示されます。このオプションを使う場合は --log が必須です。")
 no_output_help = ("画面上の出力を完全に抑制します（進捗・エラーも表示しません）。 --log が未指定の場合は実行を中止します。")
 ordered_help = ("--group指定時にoutputの順番を昇順に並べ変えます。 このoptionを使用しない場合は実行完了順に表示されます。--group 未指定の場合は実行を中止します。")
+parser_help = ("コマンドの結果をparseします。textfsmかgenieを指定します。")
 
 
 ######################
@@ -68,6 +71,7 @@ netmiko_execute_parser.add_argument("-m", "--memo", type=str, default="", help=m
 netmiko_execute_parser.add_argument("-w", "--workers", type=int, default=None, metavar="N", help=workers_help)
 netmiko_execute_parser.add_argument("-s", "--secret", type=str, default="", help=secret_help)
 netmiko_execute_parser.add_argument("-o", "--ordered", action="store_true", help=ordered_help)
+netmiko_execute_parser.add_argument("--parser", choices=["textfsm", "genie"], help=parser_help)
 
 
 # mutually exclusive
@@ -84,7 +88,7 @@ silence_group = netmiko_execute_parser.add_mutually_exclusive_group(required=Fal
 silence_group.add_argument("--quiet", action="store_true", help=quiet_help)
 silence_group.add_argument("--no-output", action="store_true", help=no_output_help)
 
-def _execute_command(connection, prompt, command):
+def _execute_command(connection, prompt, command, parser_kind):
     """
     単一コマンドを Netmiko で実行し、プロンプト＋コマンド＋出力を 1 つの文字列に整形して返す。
 
@@ -104,12 +108,20 @@ def _execute_command(connection, prompt, command):
         "{prompt} {command}\\n{device_output}\\n" 形式のテキスト。
     """
     prompt = connection.find_prompt()
-    output = connection.send_command(command)
-    full_output = f"{prompt} {command}\n{output}\n"
+
+    if parser_kind:
+        if parser_kind == "genie":
+            output = connection.send_command(command, use_genie=True, raise_parsing_error=True)
+            full_output = output
+        elif parser_kind == "textfsm":
+            pass
+    else:
+        output = connection.send_command(command)
+        full_output = f"{prompt} {command}\n{output}\n"
 
     return full_output
 
-def _execute_commands_list(connection, prompt, exec_commands):
+def _execute_commands_list(connection, prompt, exec_commands, parser_kind):
     """
     commands-lists.yaml で定義されたコマンド列を順次実行し、各結果を連結して返す。
 
@@ -133,14 +145,27 @@ def _execute_commands_list(connection, prompt, exec_commands):
     prompt = connection.find_prompt()
 
     for command in exec_commands:
-        output = connection.send_command(command)
-        full_output = f"{prompt} {command}\n{output}\n"
-        full_output_list.append(full_output)
+        if parser_kind:
+            if parser_kind == "genie":
+                output = connection.send_command(command, use_genie=True, raise_parsing_error=True)
+                full_output = output
+                full_output_list.append(full_output)
+            elif parser_kind == "textfsm":
+                pass
+        else:
+            output = connection.send_command(command)
+            full_output = f"{prompt} {command}\n{output}\n"
+            full_output_list.append(full_output)
     
-    return "".join(full_output_list)
+    if parser_kind == "genie":
+        return full_output_list
+    elif parser_kind == "textfsm":
+        pass
+    else:
+        return "".join(full_output_list)
 
 
-def _execute_commands(connection, prompt, args, exec_commands):
+def _execute_commands(connection, prompt, args, exec_commands, parser_kind: str | None = None):
     """
     単発コマンド（--command）またはコマンドリスト（--commands-list）を実行し、結果を返すラッパー関数。
 
@@ -166,14 +191,14 @@ def _execute_commands(connection, prompt, args, exec_commands):
         args.command と args.commands_list のいずれも指定されていない場合。
     """
     if args.command:
-        return _execute_command(connection, prompt, args.command)
+        return _execute_command(connection, prompt, args.command, parser_kind=args.parser)
     elif args.commands_list:
-        return _execute_commands_list(connection, prompt, exec_commands)
+        return _execute_commands_list(connection, prompt, exec_commands, parser_kind=args.parser)
     else:
         raise ValueError("command または commands_list のいずれかが必要ケロ🐸")
 
 
-def _handle_execution(device: dict, args, poutput, hostname, output_buffers: dict | None = None) -> str | None:
+def _handle_execution(device: dict, args, poutput, hostname, *, output_buffers: dict | None = None, parser_kind: str | None = None) -> str | None:
     """
     デバイス接続〜コマンド実行〜ログ保存までをまとめて処理するラッパー関数。
 
@@ -217,10 +242,15 @@ def _handle_execution(device: dict, args, poutput, hostname, output_buffers: dic
 
     # ✅ 3. コマンド実行（単発 or リスト）
     try:
-        result_output_string = _execute_commands(connection, prompt, args, exec_commands)
-    except (KeyError, ValueError) as e:
+        result_output_string = _execute_commands(connection, prompt, args, exec_commands, parser_kind)
+    except Exception as e:
         if not args.no_output:
-            print_error(str(e))
+            if args.parser == "genie":
+                print_error(f"NODE: {hostname} 🧩Genieパース失敗ケロ🐸: {e}")
+            elif args.parser == "textfsm":
+                print_error(f"NODE: {hostname} 🧩textfsmパース失敗ケロ🐸: {e}")
+            else:   
+                print_error(f"NODE: {hostname} ⚠️実行エラーケロ🐸: {e}")
             elapsed = perf_counter() - timer
             print_warning(f"NODE: {hostname} ❌中断ケロ🐸 (elapsed: {elapsed:.2f}s)")
         connection.disconnect()
@@ -233,9 +263,14 @@ def _handle_execution(device: dict, args, poutput, hostname, output_buffers: dic
     if args.log:
         _save_log(result_output_string, hostname, args)
 
+    display_text = result_output_string 
+    if parser_kind and isinstance(result_output_string, (list, dict)):
+        display_text = json.dumps(result_output_string, ensure_ascii=False, indent=2)
+    # display_text = 生テキスト or json 文字列
+
     # ordered option用の貯める処理。(quiet | no-outputのときは貯めない。)
     if output_buffers is not None and args.group and args.ordered and not args.no_output and not args.quiet:
-        output_buffers[hostname] = result_output_string
+        output_buffers[hostname] = display_text
 
     # ✅ 6. 結果表示
     if not args.no_output:
@@ -244,7 +279,7 @@ def _handle_execution(device: dict, args, poutput, hostname, output_buffers: dic
         else:
             if not (args.group and args.ordered and output_buffers is not None):
                 print_info(f"NODE: {hostname} 📄OUTPUTケロ🐸")
-                poutput(result_output_string)
+                poutput(display_text)
     elapsed = perf_counter() - timer
     if not args.no_output:
         print_success(f"NODE: {hostname} 🔚実行完了ケロ🐸 (elapsed: {elapsed:.2f}s)")
@@ -279,10 +314,13 @@ def do_execute(self, args):
         # 現仕様：完全サイレント。黙って終了（将来 notify 実装時に or を足すだけでOK）
         return
 
+    parser_kind = None
+    if args.parser:
+        parser_kind = args.parser
 
     if args.ip:
         device, hostname = _build_device_and_hostname(args)
-        result_failed_hostname = _handle_execution(device, args, self.poutput, hostname)
+        result_failed_hostname = _handle_execution(device, args, self.poutput, hostname, parser_kind=parser_kind)
         if result_failed_hostname and not args.no_output:
             print_error(f"❎ 🐸なんかトラブルケロ@: {result_failed_hostname}")
         return
@@ -299,7 +337,7 @@ def do_execute(self, args):
     
     if args.host:
         device, hostname = _build_device_and_hostname(args, inventory_data)
-        result_failed_hostname = _handle_execution(device, args, self.poutput, hostname)
+        result_failed_hostname = _handle_execution(device, args, self.poutput, hostname, parser_kind=parser_kind)
         if result_failed_hostname and not args.no_output:
             print_error(f"❎ 🐸なんかトラブルケロ@: {result_failed_hostname}")
         return
@@ -325,9 +363,9 @@ def do_execute(self, args):
                 # --orderedがあって--quietと--no_outputがないこと。
                 if ordered_output_enabled:
                     # 順番を並び替えるために貯める。
-                    future = pool.submit(_handle_execution, device, args, self.poutput, hostname, ordered_output_buffers)
+                    future = pool.submit(_handle_execution, device, args, self.poutput, hostname, ordered_output_buffers=ordered_output_buffers, parser_kind=parser_kind)
                 else:
-                    future = pool.submit(_handle_execution, device, args, self.poutput, hostname)
+                    future = pool.submit(_handle_execution, device, args, self.poutput, hostname, parser_kind=parser_kind)
                 
                 futures.append(future)
                 future_to_hostname[future] = hostname
