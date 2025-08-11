@@ -191,9 +191,9 @@ def _execute_commands(connection, prompt, args, exec_commands, parser_kind: str 
         args.command と args.commands_list のいずれも指定されていない場合。
     """
     if args.command:
-        return _execute_command(connection, prompt, args.command, parser_kind=args.parser)
+        return _execute_command(connection, prompt, args.command, parser_kind=parser_kind)
     elif args.commands_list:
-        return _execute_commands_list(connection, prompt, exec_commands, parser_kind=args.parser)
+        return _execute_commands_list(connection, prompt, exec_commands, parser_kind=parser_kind)
     else:
         raise ValueError("command または commands_list のいずれかが必要ケロ🐸")
 
@@ -363,7 +363,7 @@ def do_execute(self, args):
                 # --orderedがあって--quietと--no_outputがないこと。
                 if ordered_output_enabled:
                     # 順番を並び替えるために貯める。
-                    future = pool.submit(_handle_execution, device, args, self.poutput, hostname, ordered_output_buffers=ordered_output_buffers, parser_kind=parser_kind)
+                    future = pool.submit(_handle_execution, device, args, self.poutput, hostname, output_buffers=ordered_output_buffers, parser_kind=parser_kind)
                 else:
                     future = pool.submit(_handle_execution, device, args, self.poutput, hostname, parser_kind=parser_kind)
                 

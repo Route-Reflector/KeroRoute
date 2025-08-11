@@ -11,6 +11,8 @@ pyserial = "*"
 python-gnupg = "*"
 cmd2 = "<2.8,>=2.7"
 rich-argparse = "*"
+genie = "*"
+pyats = "*"
 
 [dev-packages]
 flake8 = "*"
