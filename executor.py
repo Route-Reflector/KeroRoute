@@ -1,6 +1,6 @@
 import argparse
 from time import perf_counter
-import typing
+from pathlib import Path
 import json
 import cmd2
 from cmd2 import Cmd2ArgumentParser
@@ -53,7 +53,8 @@ quiet_help = ("画面上の出力（nodeのcommandの結果）を抑制します
 no_output_help = ("画面上の出力を完全に抑制します（進捗・エラーも表示しません）。 --log が未指定の場合は実行を中止します。")
 ordered_help = ("--group指定時にoutputの順番を昇順に並べ変えます。 このoptionを使用しない場合は実行完了順に表示されます。--group 未指定の場合は実行を中止します。")
 parser_help = ("コマンドの結果をparseします。textfsmかgenieを指定します。")
-
+textfsm_template_help = ("--parser optionで textfsm を指定する際に template ファイルを渡すためのオプションです。\n"
+                         "--parser optionで textfsm を指定する際は必須です。(genieのときは必要ありません。)")
 
 ######################
 ### PARSER_SECTION ###
@@ -71,7 +72,8 @@ netmiko_execute_parser.add_argument("-m", "--memo", type=str, default="", help=m
 netmiko_execute_parser.add_argument("-w", "--workers", type=int, default=None, metavar="N", help=workers_help)
 netmiko_execute_parser.add_argument("-s", "--secret", type=str, default="", help=secret_help)
 netmiko_execute_parser.add_argument("-o", "--ordered", action="store_true", help=ordered_help)
-netmiko_execute_parser.add_argument("--parser", choices=["textfsm", "genie"], help=parser_help)
+netmiko_execute_parser.add_argument("--parser", "--parse",dest="parser",  choices=["textfsm", "genie", "text-fsm"], help=parser_help)
+netmiko_execute_parser.add_argument("--textfsm-template", type=str,  help=textfsm_template_help)
 
 
 # mutually exclusive
@@ -88,7 +90,8 @@ silence_group = netmiko_execute_parser.add_mutually_exclusive_group(required=Fal
 silence_group.add_argument("--quiet", action="store_true", help=quiet_help)
 silence_group.add_argument("--no-output", action="store_true", help=no_output_help)
 
-def _execute_command(connection, prompt, command, parser_kind):
+
+def _execute_command(connection, prompt, command, args, parser_kind):
     """
     単一コマンドを Netmiko で実行し、プロンプト＋コマンド＋出力を 1 つの文字列に整形して返す。
 
@@ -114,14 +117,17 @@ def _execute_command(connection, prompt, command, parser_kind):
             output = connection.send_command(command, use_genie=True, raise_parsing_error=True)
             full_output = output
         elif parser_kind == "textfsm":
-            pass
+            template = str(Path(args.textfsm_template))
+            output = connection.send_command(command, use_textfsm=True, raise_parsing_error=True,
+                                             textfsm_template=template)
+            full_output = output
     else:
         output = connection.send_command(command)
         full_output = f"{prompt} {command}\n{output}\n"
 
     return full_output
 
-def _execute_commands_list(connection, prompt, exec_commands, parser_kind):
+def _execute_commands_list(connection, prompt, exec_commands, args, parser_kind):
     """
     commands-lists.yaml で定義されたコマンド列を順次実行し、各結果を連結して返す。
 
@@ -144,6 +150,10 @@ def _execute_commands_list(connection, prompt, exec_commands, parser_kind):
     full_output_list = []
     prompt = connection.find_prompt()
 
+    # textfsmだけ先に一度だけ作る 
+    if parser_kind == "textfsm":
+        template = str(Path(args.textfsm_template))
+
     for command in exec_commands:
         if parser_kind:
             if parser_kind == "genie":
@@ -151,7 +161,10 @@ def _execute_commands_list(connection, prompt, exec_commands, parser_kind):
                 full_output = output
                 full_output_list.append(full_output)
             elif parser_kind == "textfsm":
-                pass
+                output = connection.send_command(command, use_textfsm=True, raise_parsing_error=True,
+                                                 textfsm_template=template)
+                full_output = output
+                full_output_list.append(full_output)
         else:
             output = connection.send_command(command)
             full_output = f"{prompt} {command}\n{output}\n"
@@ -160,7 +173,7 @@ def _execute_commands_list(connection, prompt, exec_commands, parser_kind):
     if parser_kind == "genie":
         return full_output_list
     elif parser_kind == "textfsm":
-        pass
+        return full_output_list
     else:
         return "".join(full_output_list)
 
@@ -191,9 +204,9 @@ def _execute_commands(connection, prompt, args, exec_commands, parser_kind: str 
         args.command と args.commands_list のいずれも指定されていない場合。
     """
     if args.command:
-        return _execute_command(connection, prompt, args.command, parser_kind=parser_kind)
+        return _execute_command(connection, prompt, args.command, args=args, parser_kind=parser_kind)
     elif args.commands_list:
-        return _execute_commands_list(connection, prompt, exec_commands, parser_kind=parser_kind)
+        return _execute_commands_list(connection, prompt, exec_commands, args=args, parser_kind=parser_kind)
     else:
         raise ValueError("command または commands_list のいずれかが必要ケロ🐸")
 
@@ -261,7 +274,12 @@ def _handle_execution(device: dict, args, poutput, hostname, *, output_buffers: 
 
     # ✅ 5. ログ保存（--log指定時のみ）
     if args.log:
-        _save_log(result_output_string, hostname, args)
+        if parser_kind:
+            if not args.no_output:
+                raise NotImplementedError("この機能はまだ実装されてないケロ🐸")
+            # :TODO Log-parsedの実装後書き換える。
+        else:
+            _save_log(result_output_string, hostname, args)
 
     display_text = result_output_string 
     if parser_kind and isinstance(result_output_string, (list, dict)):
@@ -316,7 +334,20 @@ def do_execute(self, args):
 
     parser_kind = None
     if args.parser:
+        # 表記ゆれ正規化（互換用）
+        if args.parser == "text-fsm":
+            print_warning("`text-fsm` は非推奨ケロ🐸 → `textfsm` を使ってね")
+            args.parser = "textfsm"
         parser_kind = args.parser
+
+    if args.parser == "textfsm":
+        if not args.textfsm_template:
+            print_error("--parser textfsm を使うには --textfsm-template <PATH> が必要ケロ🐸")
+            return
+        if not Path(args.textfsm_template).is_file():
+            print_error(f"指定のtemplateが見つからないケロ🐸: {args.textfsm_template}")
+            return
+
 
     if args.ip:
         device, hostname = _build_device_and_hostname(args)

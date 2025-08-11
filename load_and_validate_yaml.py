@@ -1,6 +1,5 @@
 from ruamel.yaml import YAML
 from pathlib import Path
-from message import print_error
 
 
 def load_sys_config():
@@ -13,13 +12,13 @@ def load_sys_config():
         raise FileNotFoundError("sys_config.yaml が見つからないケロ🐸")
 
     yaml = YAML()
-    with config_path.open("r") as f:
+    with open(config_path, "r", encoding="utf-8") as f:
         sys_config_data = yaml.load(f)
 
     return sys_config_data
 
 
-def get_validated_inventory_data(host=None, group=None):
+def get_validated_inventory_data(host: str = None, group: str =None) -> dict:
     """
     inventory.yaml を読み込み、指定されたホストまたはグループの存在を検証する。
 
@@ -42,23 +41,22 @@ def get_validated_inventory_data(host=None, group=None):
     ValueError
         指定された host または group が inventory.yaml に存在しない場合。
     """
+    # Errorはraiseするが表示はexecuterやconfigure側で対応。
 
     inventory_path = Path("inventory.yaml")
     if not inventory_path.exists():
         raise FileNotFoundError("inventory.yamlが存在しないケロ🐸")
 
     yaml = YAML()
-    with open(inventory_path, "r") as inventory:
+    with open(inventory_path, "r", encoding="utf-8") as inventory:
         inventory_data = yaml.load(inventory)
 
     if host and host not in inventory_data["all"]["hosts"]:
             msg = f"ホスト '{host}' はinventory.yamlに存在しないケロ🐸"
-            print_error(msg)
             raise ValueError(msg)
 
     elif group and group not in inventory_data["all"]["groups"]:
             msg = f"グループ '{group}' はinventory.yamlに存在しないケロ🐸"
-            print_error(msg)
             raise ValueError(msg)
     
     return inventory_data
@@ -73,7 +71,7 @@ def get_validated_commands_list(args, device):
         device: dict - 接続対象のデバイス情報（device_type含む）
 
     Returns:
-        commands_lists_data
+        exec_commands: list[str]
 
     Raises:
         FileNotFoundError: commands-lists.yaml が存在しない場合
@@ -83,32 +81,24 @@ def get_validated_commands_list(args, device):
     # ✅ commands-listが指定されている場合は先に存在チェック
 
     if not args.commands_list:
-        msg = "-L or --commands_list が指定されていないケロ🐸"
-        print_error(msg)
-        raise ValueError(msg)
+        raise ValueError("-L or --commands-list が指定されていないケロ🐸")
 
     if args.commands_list:
         commands_lists_path = Path("commands-lists.yaml")
         if not commands_lists_path.exists():
-            msg = "commands-lists.yaml が見つからないケロ🐸"
-            print_error(msg)
-            raise FileNotFoundError(msg)
+            raise FileNotFoundError("commands-lists.yaml が見つからないケロ🐸")
 
         yaml = YAML()
-        with commands_lists_path.open("r") as f:
+        with open(commands_lists_path, "r", encoding="utf-8") as f:
             commands_lists_data = yaml.load(f)
 
         device_type = device["device_type"]
 
         if device_type not in commands_lists_data["commands_lists"]:
-            msg = f"デバイスタイプ '{device_type}' はcommands-lists.yamlに存在しないケロ🐸"
-            print_error(msg)
-            raise ValueError(msg)
+            raise ValueError(f"デバイスタイプ '{device_type}' はcommands-lists.yamlに存在しないケロ🐸")
 
         if args.commands_list not in commands_lists_data["commands_lists"][device_type]:
-            msg = f"コマンドリスト '{args.commands_list}' はcommands-lists.yamlに存在しないケロ🐸"
-            print_error(msg)
-            raise ValueError(msg)
+            raise ValueError(f"コマンドリスト '{args.commands_list}' はcommands-lists.yamlに存在しないケロ🐸")
     
     exec_commands = commands_lists_data["commands_lists"][device["device_type"]][f"{args.commands_list}"]["commands_list"]
     return exec_commands
@@ -134,31 +124,23 @@ def get_validated_config_list(args, device):
     # ✅ config-listが指定されている場合は先に存在チェック
 
     if not args.config_list:
-        msg = "-L or --config_list が指定されていないケロ🐸"
-        print_error(msg)
-        raise ValueError(msg)
+        raise ValueError("-L or --config-list が指定されていないケロ🐸")
 
     if args.config_list:
         config_lists_path = Path("config-lists.yaml")
         if not config_lists_path.exists():
-            msg = "config-lists.yaml が見つからないケロ🐸"
-            print_error(msg)
-            raise FileNotFoundError(msg)
+            raise FileNotFoundError("config-lists.yaml が見つからないケロ🐸")
 
         yaml = YAML()
-        with config_lists_path.open("r") as f:
+        with open(config_lists_path, "r", encoding="utf-8") as f:
             config_lists_data = yaml.load(f)
 
         device_type = device["device_type"]
 
         if device_type not in config_lists_data["config_lists"]:
-            msg = f"デバイスタイプ '{device_type}' はconfig-lists.yamlに存在しないケロ🐸"
-            print_error(msg)
-            raise ValueError(msg)
+            raise ValueError(f"デバイスタイプ '{device_type}' はconfig-lists.yamlに存在しないケロ🐸")
 
         if args.config_list not in config_lists_data["config_lists"][device_type]:
-            msg = f"コマンドリスト '{args.config_list}' はconfig-lists.yamlに存在しないケロ🐸"
-            print_error(msg)
-            raise ValueError(msg)
+            raise ValueError(f"コンフィグリスト '{args.config_list}' はconfig-lists.yamlに存在しないケロ🐸")
     
     return config_lists_data

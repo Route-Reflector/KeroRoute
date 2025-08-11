@@ -27,6 +27,8 @@ commands-lists.yaml
 config-lists.yaml
 bigfile.txt
 put-test.text
+ntc-templates
+ntc-templates/*
 
 # Editor/IDE settings
 .vscode/
