@@ -9,7 +9,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from rich_argparse import RawTextRichHelpFormatter
 
 from prompt_utils import get_prompt
-from output_logging import _save_log
+from output_logging import save_log, save_json
 from build_device import _build_device_and_hostname
 from load_and_validate_yaml import get_validated_commands_list, get_validated_inventory_data
 from connect_device import connect_to_device
@@ -237,7 +237,7 @@ def _handle_execution(device: dict, args, poutput, hostname, *, output_buffers: 
         if not args.no_output:
             print_error(str(e))
             elapsed = perf_counter() - timer
-            print_warning(f"NODE: {hostname} ❌中断ケロ🐸 (elapsed: {elapsed:.2f}s)")
+            print_warning(f"<NODE: {hostname}> ❌中断ケロ🐸 (elapsed: {elapsed:.2f}s)")
         return hostname # 失敗時
 
     # ✅ 2. 接続とプロンプト取得
@@ -245,12 +245,12 @@ def _handle_execution(device: dict, args, poutput, hostname, *, output_buffers: 
         connection = connect_to_device(device, hostname)
         prompt, hostname = get_prompt(connection)
         if not args.no_output:
-            print_success(f"NODE: {hostname} 🔗接続成功ケロ🐸")
+            print_success(f"<NODE: {hostname}> 🔗接続成功ケロ🐸")
     except ConnectionError as e:
         if not args.no_output:
             print_error(str(e))
             elapsed = perf_counter() - timer
-            print_warning(f"NODE: {hostname} ❌中断ケロ🐸 (elapsed: {elapsed:.2f}s)")
+            print_warning(f"<NODE: {hostname}> ❌中断ケロ🐸 (elapsed: {elapsed:.2f}s)")
         return hostname # 失敗時
 
     # ✅ 3. コマンド実行（単発 or リスト）
@@ -259,48 +259,52 @@ def _handle_execution(device: dict, args, poutput, hostname, *, output_buffers: 
     except Exception as e:
         if not args.no_output:
             if args.parser == "genie":
-                print_error(f"NODE: {hostname} 🧩Genieパース失敗ケロ🐸: {e}")
+                print_error(f"<NODE: {hostname}> 🧩Genieパース失敗ケロ🐸: {e}")
             elif args.parser == "textfsm":
-                print_error(f"NODE: {hostname} 🧩textfsmパース失敗ケロ🐸: {e}")
+                print_error(f"<NODE: {hostname}> 🧩textfsmパース失敗ケロ🐸: {e}")
             else:   
-                print_error(f"NODE: {hostname} ⚠️実行エラーケロ🐸: {e}")
+                print_error(f"<NODE: {hostname}> ⚠️実行エラーケロ🐸: {e}")
             elapsed = perf_counter() - timer
-            print_warning(f"NODE: {hostname} ❌中断ケロ🐸 (elapsed: {elapsed:.2f}s)")
+            print_warning(f"<NODE: {hostname}> ❌中断ケロ🐸 (elapsed: {elapsed:.2f}s)")
         connection.disconnect()
         return hostname # 失敗時
 
     # ✅ 4. 接続終了
     connection.disconnect()
 
-    # ✅ 5. ログ保存（--log指定時のみ）
-    if args.log:
-        if parser_kind:
-            if not args.no_output:
-                raise NotImplementedError("この機能はまだ実装されてないケロ🐸")
-            # :TODO Log-parsedの実装後書き換える。
-        else:
-            _save_log(result_output_string, hostname, args)
-
+    # display_text = 生テキスト or json 文字列
+    # 表示用。save_json側でjson.dumpsが入るのでsave_jsonの呼び出し時はresult_output_stringを渡す。
     display_text = result_output_string 
     if parser_kind and isinstance(result_output_string, (list, dict)):
         display_text = json.dumps(result_output_string, ensure_ascii=False, indent=2)
-    # display_text = 生テキスト or json 文字列
 
     # ordered option用の貯める処理。(quiet | no-outputのときは貯めない。)
     if output_buffers is not None and args.group and args.ordered and not args.no_output and not args.quiet:
         output_buffers[hostname] = display_text
+    
+    # ✅ 5. ログ保存（--log指定時のみ）
+    if getattr(args, "log", False):
+        if not getattr(args, "no_output", False):
+            print_info(f"<NODE: {hostname}> 💾ログ保存モードONケロ🐸🔛")
+        if parser_kind in ("genie", "textfsm") and isinstance(result_output_string, (list, dict)):
+            log_path = save_json(result_output_string, hostname, args, parser_kind=parser_kind, mode="execute")
+        else:
+            log_path = save_log(result_output_string, hostname, args)
+        if not getattr(args, "no_output", False):
+            print_success(f"<NODE: {hostname}> 💾ログ保存完了ケロ🐸⏩⏩⏩ {log_path}")
+
 
     # ✅ 6. 結果表示
     if not args.no_output:
         if args.quiet:
-            print_info(f"NODE: {hostname} 📄OUTPUTは省略するケロ (hidden by --quiet) 🐸")
+            print_info(f"<NODE: {hostname}> 📄OUTPUTは省略するケロ (hidden by --quiet) 🐸")
         else:
             if not (args.group and args.ordered and output_buffers is not None):
-                print_info(f"NODE: {hostname} 📄OUTPUTケロ🐸")
+                print_info(f"<NODE: {hostname}> 📄OUTPUTケロ🐸")
                 poutput(display_text)
     elapsed = perf_counter() - timer
     if not args.no_output:
-        print_success(f"NODE: {hostname} 🔚実行完了ケロ🐸 (elapsed: {elapsed:.2f}s)")
+        print_success(f"<NODE: {hostname}> 🔚実行完了ケロ🐸 (elapsed: {elapsed:.2f}s)")
     return None # 成功時
 
 

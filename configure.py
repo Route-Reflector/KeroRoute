@@ -5,7 +5,7 @@ from rich_argparse import RawTextRichHelpFormatter
 
 from message import print_info, print_success, print_warning, print_error
 from load_and_validate_yaml import get_validated_inventory_data, get_validated_config_list
-from output_logging import _save_log
+from output_logging import save_log
 from build_device import _build_device_and_hostname
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from prompt_utils import get_prompt, ensure_enable_mode
@@ -130,7 +130,7 @@ def _handle_configure(device: dict, args, poutput, hostname) -> str | None:
 
     # ✅ 4. ログ保存（--log指定時のみ）
     if args.log:
-        _save_log(result_output_string, hostname, args, mode="configure")
+        save_log(result_output_string, hostname, args, mode="configure")
 
     # ✅ 5. 結果表示
     print_info(f"NODE: {hostname} 📄OUTPUTケロ🐸")
