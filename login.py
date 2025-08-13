@@ -11,7 +11,7 @@ from netmiko.utilities import check_serial_port
 
 
 from prompt_utils import get_prompt
-from output_logging import _save_log
+from output_logging import save_log
 from build_device import _build_device_and_hostname, build_device_and_hostname_for_console
 from load_and_validate_yaml import get_validated_commands_list, get_validated_inventory_data
 from connect_device import connect_to_device
@@ -104,7 +104,7 @@ def _handle_login(args, device, hostname):
     # --- ログ ---
     log_path, log_file = None, None
     if args.log:
-        log_path = _save_log("", hostname, args, mode="login")
+        log_path = save_log("", hostname, args, mode="login")
         if log_path:
             log_file = open(log_path, "a", encoding="utf-8")
 

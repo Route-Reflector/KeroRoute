@@ -8,7 +8,7 @@ from netmiko import ConnectHandler
 
 from message import print_error, print_info, print_warning, print_success
 from load_and_validate_yaml import get_validated_inventory_data, get_validated_commands_list
-from output_logging import _save_log
+from output_logging import save_log
 from prompt_utils import wait_for_prompt_returned
 from build_device import build_device_and_hostname_for_console
 
@@ -166,7 +166,7 @@ def do_console(self, args):
 
     # ログの保存
     if args.log:
-        _save_log(result_output_string, hostname, args, mode="console")
+        save_log(result_output_string, hostname, args, mode="console")
 
     self.poutput(result_output_string)
     wait_for_prompt_returned(connection, sleep_time=SLEEP_TIME)

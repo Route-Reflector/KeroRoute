@@ -9,7 +9,7 @@ from message import print_info, print_success, print_warning, print_error
 from load_and_validate_yaml import get_validated_inventory_data
 from build_device import _build_device_and_hostname
 
-from output_logging import _save_log
+from output_logging import save_log
 from connect_device import connect_to_device
 from prompt_utils import get_prompt
 from workers import default_workers
@@ -131,7 +131,7 @@ def _handle_scp(device, args, poutput, hostname):
 
     # ✅ 5. ログ保存（--log指定時のみ）
     if args.log:
-        _save_log(result_output_string, hostname, args, mode="scp")
+        save_log(result_output_string, hostname, args, mode="scp")
 
     # ✅ 6. 結果表示
     print_info(f"NODE: {hostname} 📄OUTPUTケロ🐸")
