@@ -5,13 +5,12 @@ from netmiko import SCPConn
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-from message import print_info, print_success, print_warning, print_error
+from message import print_info, print_success, print_error
 from load_and_validate_yaml import get_validated_inventory_data
 from build_device import _build_device_and_hostname
 
 from output_logging import save_log
-from connect_device import connect_to_device
-from prompt_utils import get_prompt
+from connect_device import connect_to_device, safe_disconnect
 from workers import default_workers
 
 
@@ -104,9 +103,8 @@ def _handle_scp(device, args, poutput, hostname):
     # ① SSH接続を確立
     # ✅ 2. 接続とプロンプト取得
     try:
-        connection = connect_to_device(device, hostname)
+        connection, prompt, hostname = connect_to_device(device, hostname)
         print_success(f"NODE: {hostname} 🔗接続成功ケロ🐸")
-        prompt, hostname = get_prompt(connection)
     except ConnectionError as e:
         print_error(str(e))
         return
@@ -127,7 +125,7 @@ def _handle_scp(device, args, poutput, hostname):
     # ④ 忘れずにクローズ！
     scp.close()
     # ✅ 4. 接続終了
-    connection.disconnect()
+    safe_disconnect(connection)
 
     # ✅ 5. ログ保存（--log指定時のみ）
     if args.log:
