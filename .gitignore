@@ -7,7 +7,9 @@ __pycache__/
 *~
 
 # Virtual environment
-venv/
+venv
+.venv-uv
+
 
 # Environment/config/secret files
 .env
@@ -45,4 +47,18 @@ pytest_cache/
 # OS-specific junk files
 .DS_Store
 Thumbs.db
+
+# === uv / Python tooling (追加) ===
 /keroRoute.egg-info/
+/.venv
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# === mkdocs build output (追加) ===
+site/
+
+# === pyenv (追加) ===
+.python-version
+
+
