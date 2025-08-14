@@ -45,3 +45,4 @@ pytest_cache/
 # OS-specific junk files
 .DS_Store
 Thumbs.db
+/keroRoute.egg-info/

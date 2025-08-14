@@ -17,15 +17,10 @@ CLI-based network automation tool for lazy NetEngs 🐸
 
 **netmiko**を利用したCLI形式のNetwork Automation Toolです。  
 ルーキーネットワークエンジニア向けに作られています。
-
 ciscoルータで作業する感覚で、pyatsやansible等のNetwork Automation Toolより学習コストが少なく始められます。  
-
 🐸がぺちぺち跳ねるような感覚で Network Automation に親しんで行きましょう。
-
 また、既存のレガシーソフトウェアを置き換える🐸のが目標です。
-
 ネットワークは好きですが、ネットワークエンジニアという仕事が嫌いなあなたにピッタリのツールです。
-
 仕事用のツールは硬派で無骨なソフトが多いのであえてemojiやメッセージ文言を取り入れています。
 
 ## 特徴 | Features
@@ -35,42 +30,33 @@ ciscoルータで作業する感覚で、pyatsやansible等のNetwork Automation
 - 💾 ログの保存・メモ付き
 - 🔍 show コマンドで情報可視化 (hosts, groups, logs, diff)
 
-## インストール | Install
 
-**ONLY on Linux !!**
-現状linuxのみをサポートしています。windowsの場合はwsl2やgit editorを利用してください。
+### Requirements
+- Python **3.13+**（開発検証は 3.13.5 で実施）
+- Linux / macOS（WindowsはWSL推奨）
+- [uv](https://github.com/astral-sh/uv)
 
-## Python Version
-Tested on Python 3.11
-(Pipfile で固定、python_version = "3.11")
 
-### Minimal Runtime Only
+## Setup (with uv)
 ```bash
 git clone https://github.com/Route-Reflector/KeroRoute.git
 cd KeroRoute
-pip install -r requirements.txt
+# uv が未インストールなら（どちらか）
+pipx install uv
+# または
+pip install --user uv
+
+# 依存インストール（本番＋開発）
+uv sync --dev
+
+# 仮想環境を有効化
+source .venv/bin/activate
+
+# KeroRoute 起動
 python main.py
 ```
 
-### Full development setup
-```bash
-# runtime + dev tools
-pip install -r requirements.txt -r requirements-dev.txt
 
-# or with Pipenv
-pipenv install --dev
-pipenv shell
-
-# run tests & lint
-pytest
-ruff check .
-```
-
-### Generating requirements.txt (for maintainers)
-```bash
-pipenv requirements          > requirements.txt
-pipenv requirements --dev    > requirements-dev.txt
-```
 
 ---
 
