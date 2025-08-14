@@ -1,3 +1,29 @@
+[project]
+name = "keroRoute"
+version = "0.0.0"
+description = "KeroRoute - Network Automation CLI"
+readme = "README.md"
+requires-python = ">=3.13"
+license = "MIT"
+dependencies = [
+    "cmd2>=2.7.0",
+    "genie>=25.7",
+    "netmiko>=4.6.0",
+    "pyats>=25.7",
+    "pyserial>=3.5",
+    "python-gnupg>=0.5.5",
+    "rich>=14.1.0",
+    "rich-argparse>=1.7.1",
+    "ruamel-yaml>=0.18.14",
+]
+
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = []
+
 [tool.ruff]
 line-length = 200
 target-version = "py38"
@@ -18,4 +44,3 @@ ignore-init-module-imports = true
 
 # 未使用の変数を明示的に許可する接頭辞（例えば _var）
 dummy-variable-rgx = "^_.*"
-
