@@ -60,18 +60,39 @@ def wait_for_prompt_returned(connection, sleep_time=0.1, max_retry=3):
                 # 必要なら元例外を連結しても良い
                 raise ValueError(msg) from e
 
+class EnableModeError(ValueError):
+    """特権モード(enable #)への移行に失敗したことを示す例外"""
+    # 専用例外クラスを作成する理由:
+    # - ensure_enable_mode() 専用のエラー種別を用意することで、
+    #   呼び出し側が except EnableModeError: のように個別処理できる
+    # - ValueError を継承しているので、汎用的な「値が想定と違う」例外として扱える
+    pass
 
-def ensure_enable_mode(connection: BaseConnection):    
+
+def ensure_enable_mode(connection: BaseConnection) -> None:
     """
-    connection が必ず enable (#) モードになるよう保証する。
-    失敗したら EnableModeError を投げる。
+    接続オブジェクトを必ず enable (#) モードに昇格させる。
+    - check_enable_mode() で現在のモードを確認し、必要なら enable() を実行
+    - 最終的に enable モードでなければ EnableModeError を送出
+    - メッセージ出力は行わず、呼び出し側で例外処理する設計
+
+    Parameters
+    ----------
+    connection : BaseConnection
+        Netmiko 接続オブジェクト
+
+    Raises
+    ------
+    EnableModeError
+        enable モードに移行できなかった場合
     """
-    if not connection.check_enable_mode():
-        try: 
+    try: 
+        if not connection.check_enable_mode():
             connection.enable()
-        except Exception as e:
-            msg = f"Enableモードに移行できなかったケロ🐸 {e}"
-            print_error(msg)
-            raise ValueError(msg)
-    
-    connection.set_base_prompt()
+        if not connection.check_enable_mode():
+            raise EnableModeError("Enable Modeに移行できなかったケロ🐸")
+    except Exception as e:
+            raise EnableModeError(str(e)) from e
+        # `from e` の意味:
+        # from e を付けると、「元の例外 e（Netmiko内部の例外など）を原因（cause）として保持」
+        # スタックトレース上で “During handling of the above exception, another exception occurred:” と因果関係が見える
