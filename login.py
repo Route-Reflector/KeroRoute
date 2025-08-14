@@ -14,7 +14,7 @@ from prompt_utils import get_prompt
 from output_logging import save_log
 from build_device import _build_device_and_hostname, build_device_and_hostname_for_console
 from load_and_validate_yaml import get_validated_commands_list, get_validated_inventory_data
-from connect_device import connect_to_device
+from connect_device import connect_to_device, safe_disconnect
 from workers import default_workers
 
 
@@ -65,7 +65,7 @@ read_timeout_help = ("send_command の応答待ち時間（秒）。\n"
 ### PARSER_SECTION ###
 ######################
 # netmiko_login_parser = argparse.ArgumentParser(formatter_class=argparse.RawTextHelpFormatter)
-netmiko_login_parser = Cmd2ArgumentParser(formatter_class=RawTextRichHelpFormatter, description="[green]execute コマンド🐸[/green]")
+netmiko_login_parser = Cmd2ArgumentParser(formatter_class=RawTextRichHelpFormatter, description="[green]login コマンド🐸[/green]")
 # "-h" はhelpと競合するから使えない。
 netmiko_login_parser.add_argument("-u", "--username", type=str, default="", help=username_help)
 netmiko_login_parser.add_argument("-p", "--password", type=str, default="", help=password_help)
@@ -94,9 +94,8 @@ def _handle_login(args, device, hostname):
 
     # ✅ 2. 接続とプロンプト取得
     try:
-        connection = connect_to_device(device, hostname)
+        connection, prompt, hostname = connect_to_device(device, hostname)
         print_success(f"NODE: {hostname} 🔗接続成功ケロ🐸")
-        prompt, hostname = get_prompt(connection)
     except ConnectionError as e:
         print_error(str(e))
         return
@@ -142,7 +141,7 @@ def _handle_login(args, device, hostname):
     finally:
         if log_file:
             log_file.close()
-        connection.disconnect()
+        safe_disconnect(connection)
         print_success("🐸 セッション終了！")
 
 
