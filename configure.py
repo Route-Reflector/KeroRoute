@@ -8,8 +8,7 @@ from load_and_validate_yaml import get_validated_inventory_data, get_validated_c
 from output_logging import save_log
 from build_device import _build_device_and_hostname
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from prompt_utils import get_prompt, ensure_enable_mode
-from connect_device import connect_to_device
+from connect_device import connect_to_device, safe_disconnect
 from workers import default_workers
 from completers import host_names_completer, group_names_completer, config_list_names_completer, device_types_completer
 
@@ -69,6 +68,37 @@ target_command.add_argument("-L", "--config-list", type=str, default="", help=co
 
 
 def apply_config_list(connection, hostname, args, device):
+    """
+    config-lists.yaml で指定された設定コマンド群を投入する。
+
+    Parameters
+    ----------
+    connection : BaseConnection
+        `connect_to_device()` で取得した Netmiko 接続（特権モード/#・base_prompt 確定済み）
+    hostname : str
+        ログ|メッセージ表示用の識別子（base_prompt 由来のホスト名）
+    args : argparse.Namespace
+        CLI 引数。`args.config_list` を使用
+    device : dict
+        接続デバイス情報。`device["device_type"]` で対象ベンダ|OSの設定リストを選択
+
+    Returns
+    -------
+    str
+        端末の返り値（`send_config_set()` の生テキスト）
+
+    Raises
+    ------
+    KeyError
+        config-lists.yaml の構造が想定外／参照キーが見つからない場合
+    ValueError
+        `args.config_list` が未指定など、投入条件を満たさない場合
+
+    Notes
+    -----
+    - `send_config_set(configure_commands, strip_prompt=False, strip_command=False)` を使用
+    - パースや変換は行わず、得られた出力をそのまま返す🐸
+    """
 
     if args.config_list:
         try:
@@ -88,33 +118,53 @@ def apply_config_list(connection, hostname, args, device):
 
 def _handle_configure(device: dict, args, poutput, hostname) -> str | None:
     """
-    デバイス接続〜設定変更〜ログ保存までをまとめて処理するラッパー関数。
+    デバイス接続 → 設定投入 → ログ保存 → 出力表示 までを一括で行う実行ラッパー。
 
-    Args:
-        device (dict): 接続情報を含むデバイス辞書
-        args: コマンドライン引数
-        poutput: cmd2 の出力関数
-        hostname (str): ログファイル名などに使うホスト識別子
-    
-    Returns:
-        成功時は None
-        失敗時は hostname (str)
+    フロー
+    ------
+    1) `connect_to_device(device, hostname)` で接続を確立
+       - 成功時、特権モード(#) へ昇格済み
+       - `set_base_prompt()` 済み
+       - `(connection, prompt, hostname)` を受け取る（hostname は base_prompt 由来）
+    2) `apply_config_list()` で設定コマンドを投入
+    3) 必要に応じてログ保存（`--log` 指定時）
+    4) 出力表示（`--no-output` / `--quiet` に応じて抑制）
+
+    Parameters
+    ----------
+    device : dict
+        接続パラメータ辞書（inventory もしくは CLI から構築）
+    args : argparse.Namespace
+        CLI 引数（log, memo, config_list などを含む）
+    poutput : Callable[[str], None]
+        cmd2 の出力関数（着色や装飾を統一するために使用）
+    hostname : str
+        接続前の識別子（IP または inventory の hostname）。接続後は base_prompt 由来に更新される
+
+    Returns
+    -------
+    None | str
+        成功時は None。失敗時は識別子（hostname）を返す（上位で失敗ノードとして集計する用）
+
+    Raises
+    ------
+    （内部で捕捉して `print_error` 済みのため、外側には投げない設計）
+
+    Notes
+    -----
+    - 例外時／終了時の切断は `safe_disconnect()` を使用して元例外を潰さない
+    - 画面表示は `--no-output` | `--quiet` の指定に従う🐸
     """
     result_output_string = ""
 
-    # ✅ 1. 接続とプロンプト取得
+    # ✅ 1. 接続とプロンプト取得（接続＝特権化＆base_prompt確定＆prompt取得まで完了）
     try:
-        connection = connect_to_device(device, hostname)
-        print_success(f"NODE: {hostname} 🔗接続成功ケロ🐸")
-        try:  
-            ensure_enable_mode(connection)        
-            prompt, hostname = get_prompt(connection)
-        except ValueError:
-            connection.disconnect()
-            return hostname # enable 失敗時にhostnameをreturn
+        connection, prompt, hostname = connect_to_device(device, hostname)
     except ConnectionError as e:
         print_error(str(e))
         return hostname # 接続失敗時にhostnameをreturn
+    
+    print_success(f"NODE: {hostname} 🔗接続成功ケロ🐸")
     
     
     # ✅ 2. 設定変更（config-list）
@@ -122,11 +172,11 @@ def _handle_configure(device: dict, args, poutput, hostname) -> str | None:
         result_output_string = apply_config_list(connection, hostname, args, device)
     except (KeyError, ValueError) as e:
         print_error(str(e))
-        connection.disconnect()
+        safe_disconnect(connection)
         return hostname # 設定投入失敗時にhostnameをreturn
 
     # ✅ 3. 接続終了
-    connection.disconnect()
+    safe_disconnect(connection)
 
     # ✅ 4. ログ保存（--log指定時のみ）
     if args.log:
@@ -141,6 +191,29 @@ def _handle_configure(device: dict, args, poutput, hostname) -> str | None:
 
 @cmd2.with_argparser(netmiko_configure_parser)
 def do_configure(self, args):
+    """
+    `configure` サブコマンドのエントリポイント。
+
+    ルーティング
+    ------------
+    - `--ip`    : 単一デバイス（CLI 引数で接続情報を指定）
+    - `--host`  : inventory.yaml の 1 ホスト
+    - `--group` : inventory.yaml のグループ内すべてのホスト（並列実行）
+
+    実装メモ
+    -------
+    - 実処理は `_handle_configure()` に委譲
+    - 接続確立は `connect_to_device()` を使用
+        - 成功時点で特権モード/# かつ base_prompt 確定済み
+        - `(connection, prompt, hostname)` を受け取り、hostname は base_prompt 由来へ更新
+    - ログ保存は `--log` 指定時のみ実施（ファイル名は hostname を組み込む）
+    - 画面表示は `--no-output` | `--quiet` に従って抑制
+
+    エラーハンドリング
+    ------------------
+    - 接続|enable 失敗、設定投入失敗は `_handle_configure()` 内で捕捉・表示
+    - グループ実行時は失敗ノードを集計して最後に要約表示する🐸
+    """
 
     if args.ip:
         device, hostname = _build_device_and_hostname(args)

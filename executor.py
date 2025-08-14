@@ -8,11 +8,10 @@ from message import print_info, print_success, print_warning, print_error
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from rich_argparse import RawTextRichHelpFormatter
 
-from prompt_utils import get_prompt
 from output_logging import save_log, save_json
 from build_device import _build_device_and_hostname
 from load_and_validate_yaml import get_validated_commands_list, get_validated_inventory_data
-from connect_device import connect_to_device
+from connect_device import connect_to_device, safe_disconnect
 from workers import default_workers
 from completers import host_names_completer, group_names_completer, device_types_completer, commands_list_names_completer
 
@@ -98,20 +97,22 @@ def _execute_command(connection, prompt, command, args, parser_kind):
     Parameters
     ----------
     connection : BaseConnection
-        `connect_to_device()` で取得した Netmiko 接続。
+        `connect_to_device()` で取得した Netmiko 接続（特権モード|base_prompt確定済み）。
     prompt : str
-        コマンド実行時に表示するプロンプト文字列（例: "R1#").
-        実装上、enable 前後の差異を吸収するため `find_prompt()` により再取得することがある。
+        呼び出し元で取得済みの固定プロンプト文字列（例: "R1#"). 再取得は行わない。
     command : str
         実行するコマンド。
+    args : argparse.Namespace
+        実行オプション（parser_kind 等を含む）。
+    parser_kind : str | None
+        "genie" / "textfsm" のときは構造化データを返す。None のときはテキストを返す。
 
     Returns
     -------
-    str
-        "{prompt} {command}\\n{device_output}\\n" 形式のテキスト。
+    str | list | dict
+        parser_kind=None のときは "{prompt} {command}\\n{device_output}\\n" 形式のテキスト。
+        parser_kind が指定されている場合は構造化データ（list/dict）。
     """
-    prompt = connection.find_prompt()
-
     if parser_kind:
         if parser_kind == "genie":
             output = connection.send_command(command, use_genie=True, raise_parsing_error=True)
@@ -129,26 +130,28 @@ def _execute_command(connection, prompt, command, args, parser_kind):
 
 def _execute_commands_list(connection, prompt, exec_commands, args, parser_kind):
     """
-    commands-lists.yaml で定義されたコマンド列を順次実行し、各結果を連結して返す。
+    commands-lists.yaml で定義されたコマンド列を順次実行し、結果を連結して返す。
 
     Parameters
     ----------
     connection : BaseConnection
-        `connect_to_device()` で取得した Netmiko 接続。
+        `connect_to_device()` で取得した Netmiko 接続（特権モード／base_prompt確定済み）。
     prompt : str
-        実行時に先頭へ付与するプロンプト文字列（例: "R1#").
-        実装上、必要に応じて `find_prompt()` で再取得する。
+        呼び出し元で取得済みの固定プロンプト文字列（例: "R1#"). 再取得は行わない。
     exec_commands : list[str]
         `get_validated_commands_list()` で取得したコマンドのリスト。
+    args : argparse.Namespace
+        実行オプション（parser_kind 等を含む）。
+    parser_kind : str | None
+        "genie" / "textfsm" のときは各コマンドの構造化データ（list）を返す。None のときはテキスト連結。
 
     Returns
     -------
-    str
-        各コマンドの "{prompt} {command}\\n{output}\\n" を連結したテキスト。
-        （各要素は末尾改行を含むため、連結は空文字 join で行う）
+    str | list
+        parser_kind=None のときは各要素 "{prompt} {command}\\n{output}\\n" を連結したテキスト。
+        parser_kind が指定されている場合は各コマンド結果の配列（list）。
     """
     full_output_list = []
-    prompt = connection.find_prompt()
 
     # textfsmだけ先に一度だけ作る 
     if parser_kind == "textfsm":
@@ -242,16 +245,16 @@ def _handle_execution(device: dict, args, poutput, hostname, *, output_buffers: 
 
     # ✅ 2. 接続とプロンプト取得
     try:
-        connection = connect_to_device(device, hostname)
-        prompt, hostname = get_prompt(connection)
-        if not args.no_output:
-            print_success(f"<NODE: {hostname}> 🔗接続成功ケロ🐸")
+        connection, prompt, hostname = connect_to_device(device, hostname)
     except ConnectionError as e:
         if not args.no_output:
             print_error(str(e))
             elapsed = perf_counter() - timer
             print_warning(f"<NODE: {hostname}> ❌中断ケロ🐸 (elapsed: {elapsed:.2f}s)")
         return hostname # 失敗時
+    
+    if not args.no_output:
+        print_success(f"<NODE: {hostname}> 🔗接続成功ケロ🐸")
 
     # ✅ 3. コマンド実行（単発 or リスト）
     try:
@@ -266,11 +269,11 @@ def _handle_execution(device: dict, args, poutput, hostname, *, output_buffers: 
                 print_error(f"<NODE: {hostname}> ⚠️実行エラーケロ🐸: {e}")
             elapsed = perf_counter() - timer
             print_warning(f"<NODE: {hostname}> ❌中断ケロ🐸 (elapsed: {elapsed:.2f}s)")
-        connection.disconnect()
+        safe_disconnect(connection)
         return hostname # 失敗時
 
     # ✅ 4. 接続終了
-    connection.disconnect()
+    safe_disconnect(connection)
 
     # display_text = 生テキスト or json 文字列
     # 表示用。save_json側でjson.dumpsが入るのでsave_jsonの呼び出し時はresult_output_stringを渡す。
