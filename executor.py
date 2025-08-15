@@ -128,6 +128,7 @@ def _execute_command(connection, prompt, command, args, parser_kind):
 
     return full_output
 
+
 def _execute_commands_list(connection, prompt, exec_commands, args, parser_kind):
     """
     commands-lists.yaml で定義されたコマンド列を順次実行し、結果を連結して返す。
@@ -235,7 +236,7 @@ def _handle_execution(device: dict, args, poutput, hostname, *, output_buffers: 
 
     try:
         if args.commands_list:
-            exec_commands = get_validated_commands_list(args, device)
+            exec_commands = get_validated_commands_list(args)
     except (FileNotFoundError, ValueError) as e:
         if not args.no_output:
             print_error(str(e))
