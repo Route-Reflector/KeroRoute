@@ -1,6 +1,14 @@
 from ruamel.yaml import YAML
 from pathlib import Path
 
+#####################
+### CONST_SECTION ###
+#####################
+SYS_CONFIG_FILE = ""
+INVENTORY_YAML_FILE = ""
+COMMANDS_LISTS_FILE = "commands-lists.yaml"
+CONFIG_LISTS_FILE = ""
+
 
 def load_sys_config():
     """
@@ -62,47 +70,68 @@ def get_validated_inventory_data(host: str = None, group: str =None) -> dict:
     return inventory_data
 
 
-def get_validated_commands_list(args, device):
+def get_validated_commands_list(args) -> list[str]:
     """
-    commands-lists.yaml に基づいて、指定されたコマンドリストの存在を検証する。
+    commands-lists.yaml（フラット構造）に基づいて、
+    指定されたコマンドリストの存在を検証し、リスト本体を返す。
 
     Args:
-        args: argparse.Namespace - コマンドライン引数
-        device: dict - 接続対象のデバイス情報（device_type含む）
+        args: argparse.Namespace - コマンドライン引数（args.commands_list を参照）
 
     Returns:
-        exec_commands: list[str]
+        list[str]: 実行するコマンドの配列
 
     Raises:
         FileNotFoundError: commands-lists.yaml が存在しない場合
-        ValueError: device_type または commands_list が未定義の場合
+        ValueError: commands_list が未指定/未定義、またはcommands_listが空の場合
+
+    Example:
+        commands_lists: # TOP LEVEL
+          cisco-precheck: # key only. commands-list-name 
+            device_type: cisco_ios
+            description: precheck_commands_before_config_change
+            tags: [before, cisco_ios] 
+            commands_list: 
+             - command
+             - command
+             - command       
     """
+    # ✅ commands-listが指定されていない場合はError
+    if not getattr(args, "commands_list", None):
+        raise ValueError("-L or --commands-listが指定されていないケロ🐸")
 
-    # ✅ commands-listが指定されている場合は先に存在チェック
+    # ✅ ファイル存在チェック
+    commands_lists_path = Path(COMMANDS_LISTS_FILE)
+    if not commands_lists_path.exists():
+        raise FileNotFoundError(f"{COMMANDS_LISTS_FILE}が見つからないケロ🐸")
 
-    if not args.commands_list:
-        raise ValueError("-L or --commands-list が指定されていないケロ🐸")
+    # ✅ YAML読み込み
+    yaml = YAML()
+    with open(commands_lists_path, "r", encoding="utf-8") as f:
+        commands_lists_data = yaml.load(f)
 
-    if args.commands_list:
-        commands_lists_path = Path("commands-lists.yaml")
-        if not commands_lists_path.exists():
-            raise FileNotFoundError("commands-lists.yaml が見つからないケロ🐸")
+    # ✅ ルートキー検証
+    if "commands_lists" not in commands_lists_data:
+        raise ValueError(f"commands_lists は {COMMANDS_LISTS_FILE} に存在しないケロ🐸")
+    if  not isinstance(commands_lists_data["commands_lists"], dict):
+        raise ValueError(f"{COMMANDS_LISTS_FILE} の形式が不正ケロ🐸")
 
-        yaml = YAML()
-        with open(commands_lists_path, "r", encoding="utf-8") as f:
-            commands_lists_data = yaml.load(f)
+    commands_list_name = args.commands_list
+    commands_lists_dict = commands_lists_data["commands_lists"]
 
-        device_type = device["device_type"]
+    # ✅ リスト名の存在チェック（フラット構造：トップレベルのキーが list_name）
+    if commands_list_name not in commands_lists_dict:
+        raise ValueError(f"コマンドリスト: '{commands_list_name}'は{COMMANDS_LISTS_FILE}に存在しないケロ🐸")
 
-        if device_type not in commands_lists_data["commands_lists"]:
-            raise ValueError(f"デバイスタイプ '{device_type}' はcommands-lists.yamlに存在しないケロ🐸")
+    exec_commands = commands_lists_dict[commands_list_name].get("commands_list")
 
-        if args.commands_list not in commands_lists_data["commands_lists"][device_type]:
-            raise ValueError(f"コマンドリスト '{args.commands_list}' はcommands-lists.yamlに存在しないケロ🐸")
-    
-    exec_commands = commands_lists_data["commands_lists"][device["device_type"]][f"{args.commands_list}"]["commands_list"]
+    if not exec_commands:
+        raise ValueError(f"コマンドリスト: '{commands_list_name}'の'commands_list'が空ケロ🐸")
+
+    if not isinstance(exec_commands, list):
+        raise ValueError(f"コマンドリスト: '{commands_list_name}'の'commands_list'の形式が不正ケロ🐸")
+
     return exec_commands
-
 
 
 def get_validated_config_list(args, device):

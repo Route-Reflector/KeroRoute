@@ -1,5 +1,5 @@
 [project]
-name = "keroRoute"
+name = "KeroRoute"
 version = "0.0.0"
 description = "KeroRoute - Network Automation CLI"
 readme = "README.md"
