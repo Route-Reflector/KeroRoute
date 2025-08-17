@@ -21,13 +21,16 @@ import time
 
 from message import print_info, print_success, print_warning, print_error
 from utils import get_table_theme, get_panel_theme
-from completers import host_names_completer, group_names_completer, show_commands_list_names_completer, show_config_list_names_completer, log_filename_completer
+from completers import host_names_completer, group_names_completer, commands_list_names_completer, show_config_list_names_completer, log_filename_completer
+from load_and_validate_yaml import COMMANDS_LISTS_FILE, get_validated_commands_list
 
 
 #######################
 ###  CONST_SECTION  ### 
 #######################
 MODE = ["execute", "console", "configure", "scp"]
+# choice ["fold", "ellipsis", "crop"] fold: 改行して全文を表示, ellipsis: "..."で切って1行に収める。, crop: はみ出た部分をバッサリ切る。
+TABLE_OVERFLOW_MODE = "fold"
 
 
 ######################
@@ -42,8 +45,8 @@ group_help = "指定したグループのメンバー情報と詳細を表示し
 commands_lists_help = "すべてのコマンドリストの一覧を表示します。"
 commands_list_help = (
     "コマンドリストの内容を表示します。\n"
-    "2つの引数（DEVICE_TYPE と COMMAND_LIST）を指定してください。\n"
-    "例: show --commands-list cisco_ios jizen_command\n"
+    "引数 COMMAND_LIST を指定してください。\n"
+    "例: show --commands-list cisco_precheck\n"
 )
 
 config_lists_help = "すべてのコンフィグリストの一覧を表示します。"
@@ -85,7 +88,7 @@ target_show.add_argument("--host", type=str, default="", help=host_help, complet
 target_show.add_argument("--groups", action="store_true", help=groups_help)
 target_show.add_argument("--group", type=str, default="", help=group_help, completer=group_names_completer)
 target_show.add_argument("--commands-lists", action="store_true", help=commands_lists_help)
-target_show.add_argument("--commands-list", nargs=2, metavar=("DEVICE_TYPE", "COMMAND_LIST"), help=commands_list_help, completer=show_commands_list_names_completer)
+target_show.add_argument("--commands-list", type=str, default="", help=commands_list_help, completer=commands_list_names_completer)
 target_show.add_argument("--logs", action="store_true", help=logs_help)
 target_show.add_argument("--log", type=str, default="", help=log_help, completer=log_filename_completer)
 target_show.add_argument("--log-last", action="store_true", help=log_last_help)
@@ -231,8 +234,8 @@ def _show_group(group):
 
 def _show_commands_lists():
     yaml = YAML()
-    with open("commands-lists.yaml", "r") as yaml_commands_lists:
-        commands_lists = yaml.load(yaml_commands_lists)
+    with open(COMMANDS_LISTS_FILE, "r", encoding="utf-8") as yaml_commands_lists:
+        commands_lists_data = yaml.load(yaml_commands_lists)
 
     table_theme = get_table_theme()
     
@@ -240,46 +243,82 @@ def _show_commands_lists():
 
     header = ["DEVICE_TYPE", "NAME", "DESCRIPTION", "TAGS"]
 
-    for _ in header:
-        table.add_column(_)
+    for h in header:
+        table.add_column(h, overflow=TABLE_OVERFLOW_MODE) # 折り返して行全体を表示
+        # table.add_column(h) # 省略表示
 
-    command_lists_info = commands_lists["commands_lists"]
+    commands_lists = commands_lists_data.get("commands_lists", {})
+    if not isinstance(commands_lists, dict):
+        console = Console()
+        raise ValueError(f"commands-listsの形式が不正ケロ")
 
-    for device_type in command_lists_info:
-        for command_list in command_lists_info[device_type]:
-            command_list_info = command_lists_info[device_type][command_list]
+    for commands_list_name, commands_list_entry in commands_lists.items():
+        device_type  = commands_list_entry.get("device_type", {})
+        description  = commands_list_entry.get("description", {})
+        tags_list  = commands_list_entry.get("tags", {})
+        tags = ", ".join(map(str, tags_list)) if isinstance(tags_list, list) else str(tags_list)
 
-            table_output =[
-                f"{device_type}",
-                f"{command_list}",
-                f'{command_list_info["description"]}',
-                f'{", ".join(command_list_info["tags"])}'
-                ]
-            table.add_row(*table_output)
+        table_output =[
+            f"{device_type}",
+            f"{commands_list_name}",
+            f'{description}',
+            f'{", ".join(tags)}'
+            ]
+        table.add_row(*table_output)
 
     console = Console() 
     console.print(table)
 
 
-def _show_commands_list(device_type, commands_list):
-    yaml = YAML()
-    with open("commands-lists.yaml", "r") as yaml_commands_lists:
-        commands_lists = yaml.load(yaml_commands_lists)
-        command_list_info = commands_lists["commands_lists"][device_type][commands_list]
+def _show_commands_list(commands_list_name: str):
+    # commands_list_name: 引数（キー文字列）
+    # commands_lists_entry: 1エントリ(dict)
+    # commands_list: 実際のコマンド配列(list[str])
 
+    yaml = YAML()
+    with open(COMMANDS_LISTS_FILE, "r", encoding="utf-8") as yaml_commands_lists:
+        commands_lists_data = yaml.load(yaml_commands_lists)
+
+    commands_lists_root = commands_lists_data.get("commands_lists", {})
+
+    # 形式チェック
+    if not isinstance(commands_lists_root, dict):
+        raise ValueError(f"'{COMMANDS_LISTS_FILE}' の形式が不正ケロ🐸")
+    
+    commands_lists_entry = commands_lists_root.get(f"{commands_list_name}")
+
+    if not isinstance(commands_lists_entry, dict):
+        raise ValueError(f"'{commands_list_name}' は '{COMMANDS_LISTS_FILE}' に存在しないケロ🐸")
+    
+    commands_list = commands_lists_entry.get("commands_list", [])
+
+    if not commands_list:
+        raise ValueError(f"'{commands_list_name}' の 'commands-list' が空ケロ🐸")
+
+    # エントリ取得
+    description = commands_lists_entry.get("description", "")
+    device_type = commands_lists_entry.get("device_type", "")
+    lines_text = f'{len(commands_list)} line(s)'
+    tags_list = commands_lists_entry.get("tags", [])
+    tags = ", ".join(map(str, tags_list)) if isinstance(tags_list, list) else str(tags_list)
+
+    table_output = [commands_list_name, description, device_type, lines_text, tags]
+
+    # ヘッダー情報テーブル
     table_theme = get_table_theme()
     table = Table(title="🐸 SHOW_COMMANDS_LIST 🐸", **table_theme)
-    header = ["COMMAND LIST", "DESCRIPTION", "DEVICE_TYPE", "LINES", "TAGS"]
-    row_data = [f"{commands_list}", f'{command_list_info["description"]}', f"{device_type}",  f'{len(command_list_info["commands_list"])} line(s)', f'{", ".join(command_list_info["tags"])}']
 
-    for _ in header:
-        table.add_column(_)
+    header = ["COMMAND_LIST", "DESCRIPTION", "DEVICE_TYPE", "LINES", "TAGS"]
 
-    table.add_row(*row_data)
+    for h in header:
+        table.add_column(h, overflow=TABLE_OVERFLOW_MODE)
 
+    table.add_row(*table_output)
+
+    # コマンド本体(番号つき)
     panel_body = Text()
-    lines = [f"{i}. {line}" for i, line in enumerate(command_list_info["commands_list"], start=1)] 
-    panel_body.append("\n".join(lines))
+    numbered_lines = [f"{i}. {line}" for i, line in enumerate(commands_list, start=1)] 
+    panel_body.append("\n".join(numbered_lines))
     panel_theme = get_panel_theme()
     panel = Panel(panel_body, title="🐸 COMMANDS 🐸", **panel_theme)
 
@@ -583,13 +622,11 @@ def do_show(self, args):
     elif args.commands_lists:
         _show_commands_lists()
     elif args.commands_list:
-        device_type, commands_list = args.commands_list
-        _show_commands_list(device_type, commands_list)
+        _show_commands_list(args.commands_list)
     elif args.config_lists:
         _show_config_lists()
     elif args.config_list:
-        device_type, config_list = args.config_list
-        _show_config_list(device_type, config_list)
+        _show_config_list(args.config_list)
     elif args.log_last:
         _show_log_last(args)
     elif args.logs:
