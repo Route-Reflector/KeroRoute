@@ -1,4 +1,3 @@
-from load_and_validate_yaml import get_validated_inventory_data
 from message import print_error
 
 
@@ -117,24 +116,57 @@ def _build_device_and_hostname(args, inventory_data=None):
         return _build_device_from_group(args, inventory_data)
 
 
+def _ensure_serial_device_type(device_type: str | None) -> str:
+    """
+    inventory には 'cisco_ios' などの“素の型”を書いておく前提。
+    console 用ではここで必ず *_serial に正規化する。
+    """
+    # device_typeが_serialで終わっていたらそのまま、device_typeが_serial以外だと_serialを付与。
+    if not device_type:
+        raise ValueError("'device_type' が指定されていないケロ🐸 'inventory.yaml' または '--device-type' を確認してケロ")
+    
+    return device_type if device_type.endswith("_serial") else f"{device_type}_serial"
+    
+
 def _build_device_for_console(args, serial_port):
+    """
+    --host 未指定パス（手動指定のみ）。host/ip が必須なのでダミーでも host を入れる。
+    """
+    if serial_port is None:
+        raise ValueError("serial_port が None ケロ🐸 '--serial' を確認してケロ")
+
+    device_type = _ensure_serial_device_type(args.device_type)
+    # Netmiko の必須項目: host or ip
+    host_for_netmiko = args.host or "console-session"
+
+    baudrate: int = args.baudrate or 9600
+    secret: str = getattr(args, "secret", None) or args.password or ""
+
     device = {
-        "device_type": args.device_type or "cisco_ios_serial",
+        "device_type": device_type, 
+        "host": host_for_netmiko, # シリアルでも必須
         "serial_settings": {
             "port": serial_port,
-            "baudrate": args.baudrate
+            "baudrate": baudrate
         },
-        "username": args.username,     # ログイン要求があれば
-        "password": args.password      # 同上
+        "username": args.username or "",     # ログイン要求があれば
+        "password": args.password or "",      # 同上
+        "secret": secret
     }
 
-    hostname = ""
-
+    # hostname は接続後に base_prompt で上書きされる想定。ここでは仮でOK
+    hostname = host_for_netmiko
     return device, hostname
 
 
 def _build_device_for_console_from_host(args, inventory_data, serial_port):
-    # deviceについては stopbits / parity / bytesize / xonxoff / rtscts / timeout などの拡張が想定される。
+    """
+    --host 指定パス。inventory の device_type は素の型（例: cisco_ios）を想定。
+    ここで *_serial に正規化する。username/password は CLI 指定があれば優先。
+    deviceについては stopbits / parity / bytesize / xonxoff / rtscts / timeout などの拡張が想定される。
+    """
+    if serial_port is None:
+        raise ValueError("serial_port が None ケロ🐸 '--serial' を確認してケロ")
 
     node_info = inventory_data.get("all", {}).get("hosts", {}).get(f"{args.host}", {})
     if not node_info:
@@ -142,18 +174,29 @@ def _build_device_for_console_from_host(args, inventory_data, serial_port):
         print_error(msg)
         raise KeyError(msg)    
 
+    base_device_type = args.device_type or node_info.get("device_type") # --device_typeがあれば上書き。
+    device_type = _ensure_serial_device_type(base_device_type)
+    
+    # Netmiko の必須項目: host or ip
+    # inventory の hostname が空なら --host 文字列で埋めておく
+    host_for_netmiko = node_info.get("hostname") or args.host
+
+    baudrate: int = args.baudrate if args.baudrate is not None else int(node_info.get("baudrate", 9600))
+    secret: str = (getattr(args, "secret", None) or node_info.get("secret", "") or args.password or node_info.get("password", "") or "")
+
     device = {
-        "device_type": args.device_type or node_info.get("device_type", "cisco_ios_serial"),
+        "device_type": device_type,
+        "host" : host_for_netmiko,
         "serial_settings": {
             "port": serial_port,
-            "baudrate": int(node_info.get("baudrate", "9600"))
+            "baudrate": baudrate
         },
         "username": args.username or node_info.get("username", ""),     # ログイン要求があれば
-        "password": args.password or node_info.get("password", "")     # 同上
+        "password": args.password or node_info.get("password", ""),     # 同上
+        "secret": secret
     }
 
-    hostname = node_info.get("hostname", "")
-
+    hostname = host_for_netmiko
     return device, hostname
 
 

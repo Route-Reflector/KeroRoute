@@ -64,7 +64,7 @@ def connect_to_device(device: dict, hostname:str, require_enable: bool = True) -
     - 画面への出力（print_*）は呼び出し側で行うこと
     """
     
-    connection = None  # 例外時の安全なdisconnect用に先行定義
+    connection: BaseConnection | None = None  # 例外時の安全なdisconnect用に先行定義
 
     try:   
         connection = ConnectHandler(**device)
@@ -82,6 +82,57 @@ def connect_to_device(device: dict, hostname:str, require_enable: bool = True) -
 
         return connection, prompt, hostname
 
+    except NetMikoTimeoutException as e:
+        safe_disconnect(connection)
+        raise ConnectionError(f"[{hostname}] タイムアウトしたケロ🐸 接続先がオフラインかも") from e
+    
+    except NetMikoAuthenticationException as e:
+        safe_disconnect(connection)
+        raise ConnectionError(f"[{hostname}] 認証に失敗したケロ🐸 ユーザー名とパスワードを確認してケロ") from e
+
+    except Exception as e:
+        # ConnectHandler失敗直後など、connectionが無い可能性がある
+        safe_disconnect(connection)
+        raise ConnectionError(f"[{hostname}]に接続できないケロ。🐸 詳細: \n {e}") from e
+
+
+def connect_to_device_for_console(device: dict, hostname: str, require_enable: bool = True) -> tuple[BaseConnection, str, str]:
+    """
+    コンソール（serial）向けの Netmiko 接続確立関数。
+    - ConnectHandler(**device) で接続（serial_settings を含む dict）
+    - require_enable=True のとき enable(#) を保証
+    - base_prompt を確定し、(prompt, hostname) を返却
+
+    Returns
+    -------
+    (connection, prompt, hostname_from_prompt)
+
+    Raises
+    ------
+    ConnectionError : タイムアウト / 認証失敗 / enable 失敗 / その他一般例外
+    """
+    # : TODO Console特有のError処理が必要になる。
+    connection: BaseConnection | None = None
+
+    device = dict(device)
+
+    # シリアルでもAPIは同じ。host/ip チェックは device 側で満たしておくこと（build_deviceで対応済）
+    try:
+        connection = ConnectHandler(**device)
+
+        if require_enable:
+            try:
+                ensure_enable_mode(connection)
+            except EnableModeError as e:
+                safe_disconnect(connection)
+                raise ConnectionError(f"[{hostname}] Enableモードに移行できなかったケロ🐸 Secretが間違ってないケロ？ {e}") from e
+
+        # enable成功後にbase promptを一度だけ取得。
+        connection.set_base_prompt()
+        prompt, hostname = get_prompt(connection)
+
+        return connection, prompt, hostname
+    
     except NetMikoTimeoutException as e:
         safe_disconnect(connection)
         raise ConnectionError(f"[{hostname}] タイムアウトしたケロ🐸 接続先がオフラインかも") from e
