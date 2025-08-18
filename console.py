@@ -4,13 +4,14 @@ import re
 from rich.console import Console
 
 from netmiko.utilities import check_serial_port
-from netmiko import ConnectHandler
 
 from message import print_error, print_info, print_warning, print_success
 from load_and_validate_yaml import get_validated_inventory_data, get_validated_commands_list
 from output_logging import save_log
 from prompt_utils import wait_for_prompt_returned
 from build_device import build_device_and_hostname_for_console
+from completers import commands_list_names_completer
+from connect_device import connect_to_device_for_console, safe_disconnect
 
 
 
@@ -45,8 +46,9 @@ memo_help = ("ログファイル名に付加する任意のメモ（文字列）
              "保存先: logs/console/\n"
              "保存名: yearmmdd-hhmmss_[hostname]_[commands_or_commands_list]_[memo]\n")
 command_help = "1つのコマンドを直接指定して実行します。"
-command_list_help = "コマンドリスト名（commands-lists.yamlに定義）を指定して実行します。" \
-                    "device_typeはホストから自動で選択されます。"
+command_list_help = "コマンドリスト名（commands-lists.yamlに定義）を指定して実行します。"
+secret_help = ("enable に入るための secret を指定します。(省略時は password を流用します。)\n")
+
 
 ######################
 ### PARSER_SECTION ###
@@ -54,7 +56,7 @@ command_list_help = "コマンドリスト名（commands-lists.yamlに定義）�
 netmiko_console_parser = argparse.ArgumentParser(formatter_class=argparse.RawTextHelpFormatter)
 # "-h" はhelpと競合するから使えない。
 netmiko_console_parser.add_argument("-s", "--serial", type=str, default="/dev/ttyUSB0", help=serial_help)
-netmiko_console_parser.add_argument("-b", "--baudrate", type=int, default=9600, help=baudrate_help)
+netmiko_console_parser.add_argument("-b", "--baudrate", type=int, default=None, help=baudrate_help)
 netmiko_console_parser.add_argument("-u", "--username", type=str, default="", help=username_help)
 netmiko_console_parser.add_argument("-p", "--password", type=str, default="", help=password_help)
 netmiko_console_parser.add_argument("-d", "--device_type", type=str, default="", help=device_type_help)
@@ -62,15 +64,17 @@ netmiko_console_parser.add_argument("-r", "--read_timeout", type=int, default=30
 netmiko_console_parser.add_argument("-H", "--host", type=str, default="", help=host_help)
 netmiko_console_parser.add_argument("-l", "--log", action="store_true", help=log_help)
 netmiko_console_parser.add_argument("-m", "--memo", type=str, default="", help=memo_help)
+netmiko_console_parser.add_argument("-S", "--secret", type=str, default="", help=secret_help)
+
 
 # mutually exclusive
 target_command = netmiko_console_parser.add_mutually_exclusive_group(required=True)
 target_command.add_argument("-c", "--command", type=str, default="", help=command_help)
-target_command.add_argument("-L", "--commands-list", type=str, default="", help=command_list_help)
-
+target_command.add_argument("-L", "--commands-list", type=str, default="", help=command_list_help, completer=commands_list_names_completer)
 
 
 console = Console()
+
 
 @cmd2.with_argparser(netmiko_console_parser)
 def do_console(self, args):
@@ -86,7 +90,6 @@ def do_console(self, args):
 
     注意:
         - 応答の遅いコマンドに備え、--read_timeout オプションで待機時間を調整可能
-        - 実行後は自動で disable して enable モードを離脱（失敗しても続行）
         - prompt 検出のために wait を挟むことで、確実な同期を行っています
 
     Args:
@@ -95,7 +98,7 @@ def do_console(self, args):
     Raise:
         ValueError: inventory 取得失敗、enable モード移行失敗、YAML 読み取り失敗など
     """
-
+    # ❶ シリアルポートのチェック
     try:
         serial_port = check_serial_port(args.serial)
         print_info(f"✅ 使用可能なポート: {serial_port}")
@@ -103,91 +106,75 @@ def do_console(self, args):
         print_error(str(e))
         return
 
-
-    # ---[ 今はここで仮に None を用意 ]-------------------------
-    # TODO(KeroRoute v1.0): inventory.yaml ローダを main.py で
-    # 一元管理して self.inventory に格納する予定。
-    inventory_data = None
-    # -----------------------------------------------------------
-
-
-    if args.host: 
+    # ❷ commands-listは接続前に検証
     # ※ 接続前なので try/except で安全に中断する
+    exec_commands = None
+    if args.commands_list:
         try:
-            inventory_data = get_validated_inventory_data(host=args.host)
+            exec_commands = get_validated_commands_list(args)
         except (FileNotFoundError, ValueError) as e:
             print_error(str(e))
             return
 
-    device , hostname = build_device_and_hostname_for_console(args, inventory_data, serial_port)
 
+    # ❸ inventoryの取得(--host or --group)
+    inventory_data = None
 
-    connection = ConnectHandler(**device)
-
-    if not connection.check_enable_mode():
-        try: 
-            connection.enable()
-        except Exception as e:
-            msg = f"Enableモードに移行できなかったケロ🐸 {e}"
-            print_error(msg)
-            raise ValueError(msg)
-
-    connection.set_base_prompt()
-    wait_for_prompt_returned(connection, sleep_time=SLEEP_TIME)
-    prompt = connection.find_prompt()
-
-    hostname = connection.base_prompt
-
-    expect_prompt = rf"{re.escape(hostname)}[#>]"
-
-
-    if args.command:
-        output = connection.send_command(args.command, delay_factor=DELAY_FACTOR, expect_string=expect_prompt, read_timeout=args.read_timeout)
-        full_output = f"{prompt} {args.command}\n{output}\n"
-        result_output_string = full_output
-    # execute_commands_listと違う部分はhostname_for_log -> hostname send_commandでdelay_factorを渡している。あとは一緒。
-    elif args.commands_list:
-        try:
-            commands_lists_data = get_validated_commands_list(args, device)
-            exec_commands = commands_lists_data["commands_lists"][device["device_type"]][f"{args.commands_list}"]["commands_list"]
-        except Exception as e:
-            msg = f"[{hostname}] commands-lists.yamlの構造がおかしいケロ🐸 詳細: {e}"
-            print_error(msg)
-            raise KeyError(msg)
-
-        full_output_list = []
-
-        for command in exec_commands:
-            output = connection.send_command(command, delay_factor=DELAY_FACTOR, expect_string=expect_prompt, read_timeout=args.read_timeout)
-            full_output = f"{prompt} {command}\n{output}\n"
-            full_output_list.append(full_output)
-        
-        result_output_string =  "\n".join(full_output_list)
-
-    # ログの保存
-    if args.log:
-        save_log(result_output_string, hostname, args, mode="console")
-
-    self.poutput(result_output_string)
-    wait_for_prompt_returned(connection, sleep_time=SLEEP_TIME)
-
-    if connection.check_enable_mode():
-        try:
-            # exit enable 前に余裕を持たせないと、応答遅延で失敗することがあるケロ🐸
-            print_info("🔽 enableモードから抜けるために disable 実行するケロ🐸")
-            connection.send_command("disable", delay_factor=DELAY_FACTOR, expect_string=expect_prompt)
-
-            if connection.check_enable_mode():
-                msg = "Enableモードから移行できなかったケロ🐸（disable効かなかった）"
-                print_warning(msg)
-
-        except Exception as e:
-            msg = f"Enableモードから移行できなかったケロ🐸 {e}"
-            print_warning(msg)
-    
     try:
-        connection.disconnect()
-    except Exception as e:
-        msg = f"disconnectに失敗したケロ🐸 詳細: {e}"
-        print_warning(msg)
- 
+        if args.host:
+            inventory_data = get_validated_inventory_data(host=args.host)
+        elif args.group:
+            inventory_data = get_validated_inventory_data(host=args.group)
+    except (FileNotFoundError, ValueError) as e:
+        print_error(str(e))
+        return
+
+    # ❹ device 構築
+    device , hostname = build_device_and_hostname_for_console(args, inventory_data, serial_port)
+    
+    # ❺ 接続 (enableまで)
+    connection = None 
+    try:
+        connection, prompt, hostname = connect_to_device_for_console(device, hostname, require_enable=True)
+    except ConnectionError as e:
+        print_error(str(e))
+        return
+    
+    print_success(f"<NODE: {hostname}> 🔗接続成功ケロ🐸")
+
+    try:
+        # prompt 同期 必要に応じて 必要か？
+        wait_for_prompt_returned(connection, sleep_time=SLEEP_TIME)
+        
+        # 実行時点のベースプロンプトから期待プロンプトを生成
+        expect_prompt = re.escape(prompt)
+
+        # ❻ 実行
+        if args.command:
+            output = connection.send_command(args.command, delay_factor=DELAY_FACTOR, expect_string=expect_prompt, read_timeout=args.read_timeout)
+            full_output = f"{prompt} {args.command}\n{output}\n"
+            result_output_string = full_output
+
+
+        elif args.commands_list:
+
+            full_output_list = []
+
+            for command in exec_commands:
+                output = connection.send_command(command, delay_factor=DELAY_FACTOR, expect_string=expect_prompt, read_timeout=args.read_timeout)
+                full_output = f"{prompt} {command}\n{output}\n"
+                full_output_list.append(full_output)
+            
+            result_output_string =  "\n".join(full_output_list)
+
+        # ❼ ログの保存
+        if args.log:
+            save_log(result_output_string, hostname, args, mode="console")
+
+        # ❽ 画面表示
+        self.poutput(result_output_string)
+        wait_for_prompt_returned(connection, sleep_time=SLEEP_TIME)
+            
+    # 安全に切断
+    finally:
+        safe_disconnect(connection)
