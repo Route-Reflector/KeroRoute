@@ -27,6 +27,7 @@ tmp/
 inventory.yaml
 commands-lists.yaml
 config-lists.yaml
+config-lists-backup.yaml
 commands-lists-backup.yaml
 commands-lists-backup_2.yaml
 bigfile.txt
