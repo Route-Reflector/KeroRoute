@@ -4,7 +4,7 @@ from cmd2 import Cmd2ArgumentParser
 from rich_argparse import RawTextRichHelpFormatter
 
 from message import print_info, print_success, print_warning, print_error
-from load_and_validate_yaml import get_validated_inventory_data, get_validated_config_list
+from load_and_validate_yaml import get_validated_inventory_data, get_validated_config_list, CONFIG_LISTS_FILE
 from output_logging import save_log
 from build_device import _build_device_and_hostname
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -67,7 +67,7 @@ target_command = netmiko_configure_parser.add_mutually_exclusive_group(required=
 target_command.add_argument("-L", "--config-list", type=str, default="", help=command_list_help, completer=config_list_names_completer)
 
 
-def apply_config_list(connection, hostname, args, device):
+def apply_config_list(connection, hostname, args):
     """
     config-lists.yaml で指定された設定コマンド群を投入する。
 
@@ -79,8 +79,6 @@ def apply_config_list(connection, hostname, args, device):
         ログ|メッセージ表示用の識別子（base_prompt 由来のホスト名）
     args : argparse.Namespace
         CLI 引数。`args.config_list` を使用
-    device : dict
-        接続デバイス情報。`device["device_type"]` で対象ベンダ|OSの設定リストを選択
 
     Returns
     -------
@@ -99,21 +97,21 @@ def apply_config_list(connection, hostname, args, device):
     - `send_config_set(configure_commands, strip_prompt=False, strip_command=False)` を使用
     - パースや変換は行わず、得られた出力をそのまま返す🐸
     """
-
-    if args.config_list:
-        try:
-            config_lists_data = get_validated_config_list(args, device)
-            configure_commands = config_lists_data["config_lists"][device["device_type"]][f"{args.config_list}"]["config_list"]
-        except Exception as e:
-            msg = f"[{hostname}] config-lists.yamlの構造がおかしいケロ🐸 詳細: {e}"
-            print_error(msg)
-            raise KeyError(msg)
-
-        result_output_string = connection.send_config_set(configure_commands, strip_prompt=False, strip_command=False)
-        return result_output_string
-
-    else:
+    if not args.config_list:
         raise ValueError("config_listが必要ケロ🐸")
+
+    try:
+        configure_commands = get_validated_config_list(args)
+
+    except (FileNotFoundError, ValueError) as e:
+        raise KeyError(f"[{hostname}] '{CONFIG_LISTS_FILE}' の構造がおかしいケロ🐸 詳細: {e}")
+
+
+
+    result_output_string = connection.send_config_set(configure_commands, strip_prompt=False, strip_command=False)
+
+    return result_output_string
+
 
 
 def _handle_configure(device: dict, args, poutput, hostname) -> str | None:
@@ -169,7 +167,7 @@ def _handle_configure(device: dict, args, poutput, hostname) -> str | None:
     
     # ✅ 2. 設定変更（config-list）
     try:
-        result_output_string = apply_config_list(connection, hostname, args, device)
+        result_output_string = apply_config_list(connection, hostname, args)
     except (KeyError, ValueError) as e:
         print_error(str(e))
         safe_disconnect(connection)

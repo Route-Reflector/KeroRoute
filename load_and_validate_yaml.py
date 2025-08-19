@@ -7,7 +7,7 @@ from pathlib import Path
 SYS_CONFIG_FILE = ""
 INVENTORY_YAML_FILE = ""
 COMMANDS_LISTS_FILE = "commands-lists.yaml"
-CONFIG_LISTS_FILE = ""
+CONFIG_LISTS_FILE = "config-lists.yaml"
 
 
 def load_sys_config():
@@ -113,6 +113,7 @@ def get_validated_commands_list(args) -> list[str]:
     # ✅ ルートキー検証
     if "commands_lists" not in commands_lists_data:
         raise ValueError(f"commands_lists は {COMMANDS_LISTS_FILE} に存在しないケロ🐸")
+
     if  not isinstance(commands_lists_data["commands_lists"], dict):
         raise ValueError(f"{COMMANDS_LISTS_FILE} の形式が不正ケロ🐸")
 
@@ -134,42 +135,66 @@ def get_validated_commands_list(args) -> list[str]:
     return exec_commands
 
 
-def get_validated_config_list(args, device):
+def get_validated_config_list(args) -> list[str]:
     """
-    config-lists.yaml に基づいて、指定されたコンフィグリストの存在を検証する。
+    config-lists.yaml（フラット構造）に基づいて、
+    指定されたコンフィグリストの存在と形式を検証し、リスト本体（list[str]）を返す。
 
     Args:
-        args: argparse.Namespace - コマンドライン引数
-        device: dict - 接続対象のデバイス情報（device_type含む）
+        args (argparse.Namespace): コマンドライン引数（args.config_list を使用）
 
     Returns:
-        config_lists_data
+        list[str]: 実行するコンフィグ行の配列
 
     Raises:
         FileNotFoundError: config-lists.yaml が存在しない場合
-        ValueError: device_type または config_list が未定義の場合
+        ValueError: ルートキー 'config_lists' が無い／形式不正、指定リストが未定義、
+                    もしくは 'config_list' が空または文字列リストでない場合
+
+    Example:
+        config_lists:  # TOP LEVEL
+          cisco-loopback-change:  # <- config-list name
+            device_type: cisco_ios
+            description: loopback 0 configuration
+            tags: [configure, cisco_ios]
+            config_list:
+              - interface Loopback0
+              - description example
+              - ip address 10.0.0.1 255.255.255.255
+              - no shutdown
     """
 
     # ✅ config-listが指定されている場合は先に存在チェック
 
-    if not args.config_list:
+    if not getattr(args, "config_list", None):
         raise ValueError("-L or --config-list が指定されていないケロ🐸")
 
-    if args.config_list:
-        config_lists_path = Path("config-lists.yaml")
-        if not config_lists_path.exists():
-            raise FileNotFoundError("config-lists.yaml が見つからないケロ🐸")
+    config_lists_path = Path(CONFIG_LISTS_FILE)
+    if not config_lists_path.exists():
+        raise FileNotFoundError(f"'{CONFIG_LISTS_FILE}' が見つからないケロ🐸")
 
-        yaml = YAML()
-        with open(config_lists_path, "r", encoding="utf-8") as f:
-            config_lists_data = yaml.load(f)
+    yaml = YAML()
+    with open(config_lists_path, "r", encoding="utf-8") as f:
+        config_lists_data = yaml.load(f)
 
-        device_type = device["device_type"]
+    if "config_lists" not in config_lists_data:
+        raise ValueError(f"config_lists は {CONFIG_LISTS_FILE} に存在しないケロ🐸")
 
-        if device_type not in config_lists_data["config_lists"]:
-            raise ValueError(f"デバイスタイプ '{device_type}' はconfig-lists.yamlに存在しないケロ🐸")
+    if not isinstance(config_lists_data["config_lists"], dict):
+        raise ValueError(f"{CONFIG_LISTS_FILE} の形式が不正ケロ🐸")
 
-        if args.config_list not in config_lists_data["config_lists"][device_type]:
-            raise ValueError(f"コンフィグリスト '{args.config_list}' はconfig-lists.yamlに存在しないケロ🐸")
     
-    return config_lists_data
+    config_lists =  config_lists_data["config_lists"]
+    config_list_name = args.config_list
+
+    if config_list_name not in config_lists:
+        raise ValueError(f"コンフィグリスト '{config_list_name}' は '{CONFIG_LISTS_FILE}' に存在しないケロ🐸")
+    
+    exec_commands = config_lists.get(config_list_name).get("config_list")
+    
+    if not exec_commands:
+        raise ValueError(f"コンフィグリスト: '{config_list_name}' の 'config_list' が空ケロ🐸")
+    if not isinstance(exec_commands, list):
+        raise ValueError(f"コンフィグリスト: '{config_list_name}' の 'config_list' は文字列のリストじゃないケロ🐸")
+
+    return exec_commands
