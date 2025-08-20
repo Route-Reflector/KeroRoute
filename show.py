@@ -21,8 +21,8 @@ import time
 
 from message import print_info, print_success, print_warning, print_error
 from utils import get_table_theme, get_panel_theme
-from completers import host_names_completer, group_names_completer, commands_list_names_completer, show_config_list_names_completer, log_filename_completer
-from load_and_validate_yaml import COMMANDS_LISTS_FILE, get_validated_commands_list
+from completers import host_names_completer, group_names_completer, commands_list_names_completer, config_list_names_completer, log_filename_completer
+from load_and_validate_yaml import COMMANDS_LISTS_FILE, CONFIG_LISTS_FILE
 
 
 #######################
@@ -52,8 +52,7 @@ commands_list_help = (
 config_lists_help = "すべてのコンフィグリストの一覧を表示します。"
 config_list_help = (
     "コンフィグリストの内容を表示します。\n"
-    "2つの引数(DDEVICE_TYPE と CONFIG_LIST)を指定してください。\n"
-    "example: show --config-list cisco_ios R1_loopback100_setup"
+    "example: show --config-list cisco-R1-loopback100-setup"
 )
 
 logs_help = "保存されているすべてのログファイルの一覧を表示します。"
@@ -94,12 +93,14 @@ target_show.add_argument("--log", type=str, default="", help=log_help, completer
 target_show.add_argument("--log-last", action="store_true", help=log_last_help)
 target_show.add_argument("--diff", nargs=2, metavar=("OLD_LOG", "NEW_LOG"), help=diff_help, completer=log_filename_completer)
 target_show.add_argument("--config-lists", action="store_true", help=config_lists_help)
-target_show.add_argument("--config-list", nargs=2, metavar=("DEVICE_TYPE", "CONFIG_LIST"), help=config_list_help, completer=show_config_list_names_completer)
+target_show.add_argument("--config-list", type=str, default="", help=config_list_help, completer=config_list_names_completer)
+
+
+yaml = YAML()
+console = Console()
 
 
 def _show_hosts():
-
-    yaml = YAML()
 
     with open("inventory.yaml", "r") as host_list:
         host_list_data = yaml.load(host_list) 
@@ -124,58 +125,52 @@ def _show_hosts():
         ]
         table.add_row(*table_output)
     
-    console = Console()
     console.print(table)
     
 
 def _show_host(node):
     
-    yaml = YAML()
     with open("inventory.yaml", "r") as host_list:
         host_list_data = yaml.load(host_list) 
         node_list = host_list_data["all"]["hosts"]
 
+    if node not in node_list:
+        raise ValueError(f"'{node}' は inventory.yaml に居ないケロ🐸")
 
-        table_theme = get_table_theme()
+    table_theme = get_table_theme()
+    table = Table(title="🐸 SHOW_HOST 🐸", **table_theme)
 
-        table = Table(title="🐸 SHOW_HOST 🐸", **table_theme)
+    header = ["Hostname", "IP Address", "Device Type", "Description", "Username", "Password", "Tags", "Port", "Timeout", "TTL"]
+    for _ in header:
+        table.add_column(_)
 
-        header = ["Hostname", "IP Address", "Device Type", "Description", "Username", "Password", "Tags", "Port", "Timeout", "TTL"]
+    table_output = (
+        f'{node_list[node]["hostname"]}',
+        f'{node_list[node]["ip"]}',
+        f'{node_list[node]["device_type"]}',
+        f'{node_list[node]["description"]}',
+        f'{node_list[node]["username"]}',
+        f'{node_list[node]["password"]}',
+        f'{", ".join(node_list[node]["tags"])}',
+        f'{node_list[node]["port"]}',
+        f'{node_list[node]["timeout"]}',
+        f'{node_list[node]["ttl"]}'
+        )
+    table.add_row(*table_output)
 
-        for _ in header:
-            table.add_column(_)
-
-        table_output = (
-            f'{node_list[node]["hostname"]}',
-            f'{node_list[node]["ip"]}',
-            f'{node_list[node]["device_type"]}',
-            f'{node_list[node]["description"]}',
-            f'{node_list[node]["username"]}',
-            f'{node_list[node]["password"]}',
-            f'{", ".join(node_list[node]["tags"])}',
-            f'{node_list[node]["port"]}',
-            f'{node_list[node]["timeout"]}',
-            f'{node_list[node]["ttl"]}'
-            )
-        table.add_row(*table_output)
-
-        console = Console()
-        console.print(table)
+    console.print(table)
 
 
 def _show_groups():
     
-    yaml = YAML()
     with open("inventory.yaml", "r") as inventory:
         inventory_data = yaml.load(inventory) 
         groups_list = inventory_data["all"]["groups"]
     
     table_theme = get_table_theme()
-
     table = Table(title="🐸 SHOW_GROUPS 🐸", **table_theme)
 
     header = ["GROUP", "DESCRIPTION", "TAGS"]
-
     for _ in header:
         table.add_column(_)
 
@@ -184,56 +179,56 @@ def _show_groups():
         group_tags = ", ".join(groups_list[group]["tags"])
         table.add_row(group, group_desc, group_tags)
     
-    console = Console()
     console.print(table)
 
 
 def _show_group(group):
 
-    yaml = YAML()
     with open("inventory.yaml", "r") as inventory:
         inventory_data = yaml.load(inventory) 
         groups_list = inventory_data["all"]["groups"]
 
-        table_theme = get_table_theme()
-        panel_theme = get_panel_theme()
+    if group not in groups_list:
+        raise ValueError(f"'{group}' は inventory.yaml に居ないケロ🐸")
 
-        panel_body = Text()
-        panel_body.append(f'Group: {group}\n')
-        panel_body.append(f'Description: {groups_list[group]["description"]}\n')
-        panel_body.append(f'Tags: {", ".join(groups_list[group]["tags"])}\n')
-        panel_body.append(f'Members: {len(groups_list[group]["hosts"])} host(s)')
+    table_theme = get_table_theme()
+    panel_theme = get_panel_theme()
 
-        panel = Panel(panel_body, title="🐸 GROUP INFO 🐸", **panel_theme)
+    panel_body = Text()
+    panel_body.append(f'Group: {group}\n')
+    panel_body.append(f'Description: {groups_list[group]["description"]}\n')
+    panel_body.append(f'Tags: {", ".join(groups_list[group]["tags"])}\n')
+    panel_body.append(f'Members: {len(groups_list[group]["hosts"])} host(s)')
 
+    panel = Panel(panel_body, title="🐸 GROUP INFO 🐸", **panel_theme)
 
-        table = Table(title="🐸 SHOW_GROUP 🐸", **table_theme)
-        header = ["Hostname", "Ip", "Type", "Description", "Tags"]
+    table = Table(title="🐸 SHOW_GROUP 🐸", **table_theme)
+    header = ["Hostname", "Ip", "Type", "Description", "Tags"]
+    for _ in header:
+        table.add_column(_)
 
-        for _ in header:
-            table.add_column(_)
+    group_hosts = groups_list[group]["hosts"]
 
-        group_hosts = groups_list[group]["hosts"]
+    for host in group_hosts:
+        host_info = inventory_data["all"]["hosts"][host]
 
-        for host in group_hosts:
-            host_info = inventory_data["all"]["hosts"][host]
-
-            table_output = (
-                f'{host_info["hostname"]}',
-                f'{host_info["ip"]}',
-                f'{host_info["device_type"]}',
-                f'{host_info["description"]}',
-                f'{", ".join(host_info["tags"])}'
-                )
-            table.add_row(*table_output)
-        
-        console = Console()
-        console.print(panel)
-        console.print(table)
+        table_output = (
+            f'{host_info["hostname"]}',
+            f'{host_info["ip"]}',
+            f'{host_info["device_type"]}',
+            f'{host_info["description"]}',
+            f'{", ".join(host_info["tags"])}'
+            )
+        table.add_row(*table_output)
+    
+    console.print(panel)
+    console.print(table)
 
 
 def _show_commands_lists():
-    yaml = YAML()
+    if not Path(COMMANDS_LISTS_FILE).exists():
+        raise FileNotFoundError(f"'{COMMANDS_LISTS_FILE}' が無いケロ🐸")
+
     with open(COMMANDS_LISTS_FILE, "r", encoding="utf-8") as yaml_commands_lists:
         commands_lists_data = yaml.load(yaml_commands_lists)
 
@@ -253,20 +248,19 @@ def _show_commands_lists():
         raise ValueError(f"commands-listsの形式が不正ケロ")
 
     for commands_list_name, commands_list_entry in commands_lists.items():
-        device_type  = commands_list_entry.get("device_type", {})
-        description  = commands_list_entry.get("description", {})
-        tags_list  = commands_list_entry.get("tags", {})
+        device_type  = commands_list_entry.get("device_type", "")
+        description  = commands_list_entry.get("description", "")
+        tags_list  = commands_list_entry.get("tags", [])
         tags = ", ".join(map(str, tags_list)) if isinstance(tags_list, list) else str(tags_list)
 
         table_output =[
             f"{device_type}",
             f"{commands_list_name}",
             f'{description}',
-            f'{", ".join(tags)}'
+            f'{tags}'
             ]
         table.add_row(*table_output)
 
-    console = Console() 
     console.print(table)
 
 
@@ -274,8 +268,9 @@ def _show_commands_list(commands_list_name: str):
     # commands_list_name: 引数（キー文字列）
     # commands_lists_entry: 1エントリ(dict)
     # commands_list: 実際のコマンド配列(list[str])
+    if not Path(COMMANDS_LISTS_FILE).exists():
+        raise FileNotFoundError(f"'{COMMANDS_LISTS_FILE}' が無いケロ🐸")
 
-    yaml = YAML()
     with open(COMMANDS_LISTS_FILE, "r", encoding="utf-8") as yaml_commands_lists:
         commands_lists_data = yaml.load(yaml_commands_lists)
 
@@ -322,78 +317,96 @@ def _show_commands_list(commands_list_name: str):
     panel_theme = get_panel_theme()
     panel = Panel(panel_body, title="🐸 COMMANDS 🐸", **panel_theme)
 
-    console = Console()
     console.print(table)
     console.print("\n")
     console.print(panel)
 
 
 def _show_config_lists():
-    yaml = YAML()
 
-    if not Path("config-lists.yaml").exists():
-        print_error("config-lists.yaml が無いケロ🐸")
-        return
+    if not Path(CONFIG_LISTS_FILE).exists():
+        raise FileNotFoundError(f"'{CONFIG_LISTS_FILE}' が無いケロ🐸")
 
-    with open("config-lists.yaml", "r") as yaml_config_lists:
-        config_lists = yaml.load(yaml_config_lists)
+    with open(CONFIG_LISTS_FILE, "r", encoding="utf-8") as yaml_config_lists:
+        config_lists_data = yaml.load(yaml_config_lists)
 
     table_theme = get_table_theme()
-    
     table = Table(title="🐸 SHOW_CONFIG_LISTS 🐸", **table_theme)
 
     header = ["DEVICE_TYPE", "NAME", "DESCRIPTION", "TAGS"]
+    for h in header:
+        table.add_column(h, overflow=TABLE_OVERFLOW_MODE)
 
-    for _ in header:
-        table.add_column(_)
+    config_lists = config_lists_data.get("config_lists", {})
+    if not isinstance(config_lists, dict):
+        raise ValueError(f"'{CONFIG_LISTS_FILE}' の形式が不正ケロ")
 
-    config_lists_info = config_lists["config_lists"]
+    for config_list_name, config_list_entry in config_lists.items():
+        device_type = config_list_entry.get("device_type", "")
+        description = config_list_entry.get("description", "")
+        tags_list = config_list_entry.get("tags", [])
+        tags = ", ".join(map(str, tags_list)) if isinstance(tags_list, list) else str(tags_list)
 
-    for device_type in config_lists_info:
-        for config_list in config_lists_info[device_type]:
-            config_list_info = config_lists_info[device_type][config_list]
-
-            table_output =[
-                f"{device_type}",
-                f"{config_list}",
-                f'{config_list_info["description"]}',
-                f'{", ".join(config_list_info["tags"])}'
+        table_output = [
+            f"{device_type}",
+            f"{config_list_name}",
+            f"{description}",
+            f'{tags}'
                 ]
-            table.add_row(*table_output)
+        table.add_row(*table_output)
 
-    console = Console() 
     console.print(table)
 
 
-def _show_config_list(device_type, config_list):
-    yaml = YAML()
+def _show_config_list(config_list_name :str):
 
-    if not Path("config-lists.yaml").exists():
-        print_error("config-lists.yaml が無いケロ🐸")
-        return
+    if not Path(CONFIG_LISTS_FILE).exists():
+        raise FileNotFoundError(f"'{CONFIG_LISTS_FILE}' が無いケロ🐸")
 
-    with open("config-lists.yaml", "r") as yaml_config_lists:
-        config_lists = yaml.load(yaml_config_lists)
-        config_list_info = config_lists["config_lists"][device_type][config_list]
+    with open(CONFIG_LISTS_FILE, "r", encoding="utf-8") as yaml_config_lists:
+        config_lists_data = yaml.load(yaml_config_lists)
 
+    # 形式チェック 
+    config_lists_root = config_lists_data.get("config_lists", {})
+
+    if not isinstance(config_lists_root, dict):
+        raise ValueError(f"'{CONFIG_LISTS_FILE}' の形式が不正ケロ🐸")
+    
+    config_lists_entry = config_lists_root.get(config_list_name)
+    if not isinstance(config_lists_entry, dict):
+        raise ValueError(f"'{config_list_name}' は '{CONFIG_LISTS_FILE}' に存在しないケロ🐸")
+
+    config_list = config_lists_entry.get("config_list", [])
+
+    if not config_list:
+        raise ValueError(f"'{config_list_name}' の 'config-list' が空ケロ🐸")
+
+    # エントリ取得
+    description = config_lists_entry.get("description", "")
+    device_type = config_lists_entry.get("device_type", "")
+    lines_text = f'{len(config_list)} line(s)'
+    tags_list = config_lists_entry.get("tags", [])
+    tags = ", ".join(map(str, tags_list)) if isinstance(tags_list, list) else str(tags_list)
+
+    table_output = [config_list_name, description, device_type, lines_text, tags]
+
+    # ヘッダー情報テーブル
     table_theme = get_table_theme()
     table = Table(title="🐸 SHOW_CONFIG_LIST 🐸", **table_theme)
+
     header = ["CONFIG LIST", "DESCRIPTION", "DEVICE_TYPE", "LINES", "TAGS"]
-    row_data = [f"{config_list}", f'{config_list_info["description"]}', f"{device_type}",
-                f'{len(config_list_info["config_list"])} line(s)', f'{", ".join(config_list_info["tags"])}']
+    for h in header:
+        table.add_column(h, overflow=TABLE_OVERFLOW_MODE)
 
-    for _ in header:
-        table.add_column(_)
+    table.add_row(*table_output)
 
-    table.add_row(*row_data)
-
+    # config-list の中身
     panel_body = Text()
-    lines = [f"{i}. {line}" for i, line in enumerate(config_list_info["config_list"], start=1)] 
-    panel_body.append("\n".join(lines))
+    numbered_lines = [f"{i}. {line}" for i, line in enumerate(config_list, start=1)] 
+    panel_body.append("\n".join(numbered_lines))
     panel_theme = get_panel_theme()
-    panel = Panel(panel_body, title="🐸 COMMANDS 🐸", **panel_theme)
+    panel = Panel(panel_body, title="🐸 CONFIGS 🐸", **panel_theme)
 
-    console = Console()
     console.print(table)
     console.print("\n")
     console.print(panel)
@@ -401,7 +414,6 @@ def _show_config_list(device_type, config_list):
 
 def _show_logs(args):
 
-    console = Console()
     today_str = datetime.now().strftime("%Y%m%d")
 
     if args.mode in ("execute", "console", "configure", "scp"):
@@ -523,7 +535,6 @@ def _show_diff(args):
                                                 fromfile=args.diff[0],
                                                 tofile=args.diff[1],
                                                 lineterm=""))
-            console = Console()
             if diff_lines:
                 console.print("\n".join(diff_lines))
             else:
