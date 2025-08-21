@@ -9,6 +9,7 @@ INVENTORY_YAML_FILE = ""
 COMMANDS_LISTS_FILE = "commands-lists.yaml"
 CONFIG_LISTS_FILE = "config-lists.yaml"
 
+yaml = YAML()
 
 def load_sys_config():
     """
@@ -19,7 +20,6 @@ def load_sys_config():
     if not config_path.exists():
         raise FileNotFoundError("sys_config.yaml が見つからないケロ🐸")
 
-    yaml = YAML()
     with open(config_path, "r", encoding="utf-8") as f:
         sys_config_data = yaml.load(f)
 
@@ -55,7 +55,6 @@ def get_validated_inventory_data(host: str = None, group: str =None) -> dict:
     if not inventory_path.exists():
         raise FileNotFoundError("inventory.yamlが存在しないケロ🐸")
 
-    yaml = YAML()
     with open(inventory_path, "r", encoding="utf-8") as inventory:
         inventory_data = yaml.load(inventory)
 
@@ -106,7 +105,6 @@ def get_validated_commands_list(args) -> list[str]:
         raise FileNotFoundError(f"{COMMANDS_LISTS_FILE}が見つからないケロ🐸")
 
     # ✅ YAML読み込み
-    yaml = YAML()
     with open(commands_lists_path, "r", encoding="utf-8") as f:
         commands_lists_data = yaml.load(f)
 
@@ -173,7 +171,6 @@ def get_validated_config_list(args) -> list[str]:
     if not config_lists_path.exists():
         raise FileNotFoundError(f"'{CONFIG_LISTS_FILE}' が見つからないケロ🐸")
 
-    yaml = YAML()
     with open(config_lists_path, "r", encoding="utf-8") as f:
         config_lists_data = yaml.load(f)
 
@@ -198,3 +195,55 @@ def get_validated_config_list(args) -> list[str]:
         raise ValueError(f"コンフィグリスト: '{config_list_name}' の 'config_list' は文字列のリストじゃないケロ🐸")
 
     return exec_commands
+
+
+def validate_device_type_for_list(hostname: str, node_device_type: str | None, list_name:str, list_device_type: str | None) -> bool:
+    """
+    対象ホストの device_type とリスト側の device_type が一致するか検証する。
+    - ここではメッセージ表示は行わず、ValueError を投げるだけ。
+    - 上位（executor.py / configure.py）で try/except して表示やスキップ/続行を決める。
+    """
+    # List側が未設定
+    if not list_device_type:
+        raise ValueError(f"LIST: {list_name} に device_type が未設定ケロ🐸")
+    
+    # host側が未設定
+      # 簡単な入力対策(大文字小文字 -> 小文字に統一, 前後スペース削除)
+    if not node_device_type:
+        raise ValueError(f"NODE: {hostname} に device_type が未設定ケロ🐸")
+    
+    node_dt_ls = node_device_type.lower().strip()
+    list_dt_ls = list_device_type.lower().strip()
+
+    if node_dt_ls != list_dt_ls:
+        raise ValueError(
+            f"NODE: {hostname} , LIST: {list_name} ❌ device_type 不一致ケロ🐸 "
+            f"(NODE: {node_device_type} / LIST: {list_device_type})"
+        )
+    return True
+
+
+def get_commands_list_device_type(list_name: str) -> str | None:
+    """
+    commands-lists.yaml から指定リストの device_type を返す。
+    見つからない・未設定なら None を返す。
+    """
+    # ✅ ファイル存在チェック
+    commands_lists_path = Path(COMMANDS_LISTS_FILE)
+    if not commands_lists_path.exists():
+        raise FileNotFoundError(f"{COMMANDS_LISTS_FILE}が見つからないケロ🐸")
+
+    # ✅ YAML読み込み
+    with open(commands_lists_path, "r", encoding="utf-8") as f:
+        commands_lists_data = yaml.load(f)
+
+    # ✅ ルートキー検証
+    if "commands_lists" not in commands_lists_data:
+        raise ValueError(f"commands_lists は {COMMANDS_LISTS_FILE} に存在しないケロ🐸")
+
+    if  not isinstance(commands_lists_data["commands_lists"], dict):
+        raise ValueError(f"{COMMANDS_LISTS_FILE} の形式が不正ケロ🐸")
+
+    
+    commands_lists_device_type = commands_lists_data.get("commands_lists", {}).get(list_name, {}).get("device_type")
+    return commands_lists_device_type 

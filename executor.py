@@ -10,7 +10,7 @@ from rich_argparse import RawTextRichHelpFormatter
 
 from output_logging import save_log, save_json
 from build_device import _build_device_and_hostname
-from load_and_validate_yaml import get_validated_commands_list, get_validated_inventory_data
+from load_and_validate_yaml import get_validated_commands_list, get_validated_inventory_data, validate_device_type_for_list, get_commands_list_device_type
 from connect_device import connect_to_device, safe_disconnect
 from workers import default_workers
 from completers import host_names_completer, group_names_completer, device_types_completer, commands_list_names_completer
@@ -54,10 +54,12 @@ ordered_help = ("--group指定時にoutputの順番を昇順に並べ変えま�
 parser_help = ("コマンドの結果をparseします。textfsmかgenieを指定します。")
 textfsm_template_help = ("--parser optionで textfsm を指定する際に template ファイルを渡すためのオプションです。\n"
                          "--parser optionで textfsm を指定する際は必須です。(genieのときは必要ありません。)")
+force_help = "device_type の不一致や未設定エラーを無視して強制実行するケロ🐸"
+
 
 ######################
 ### PARSER_SECTION ###
-######################
+######################:w
 # netmiko_execute_parser = argparse.ArgumentParser(formatter_class=argparse.RawTextHelpFormatter)
 netmiko_execute_parser = Cmd2ArgumentParser(formatter_class=RawTextRichHelpFormatter, description="[green]execute コマンド🐸[/green]")
 # "-h" はhelpと競合するから使えない。
@@ -73,6 +75,7 @@ netmiko_execute_parser.add_argument("-s", "--secret", type=str, default="", help
 netmiko_execute_parser.add_argument("-o", "--ordered", action="store_true", help=ordered_help)
 netmiko_execute_parser.add_argument("--parser", "--parse",dest="parser",  choices=["textfsm", "genie", "text-fsm"], help=parser_help)
 netmiko_execute_parser.add_argument("--textfsm-template", type=str,  help=textfsm_template_help)
+netmiko_execute_parser.add_argument("--force", action="store_true", help=force_help)
 
 
 # mutually exclusive
@@ -243,8 +246,29 @@ def _handle_execution(device: dict, args, poutput, hostname, *, output_buffers: 
             elapsed = perf_counter() - timer
             print_warning(f"<NODE: {hostname}> ❌中断ケロ🐸 (elapsed: {elapsed:.2f}s)")
         return hostname # 失敗時
+    
+    # ✅ 2. device_type ミスマッチチェック (接続前に実施)
+    if args.commands_list:
+        list_device_type = get_commands_list_device_type(args.commands_list)
+        node_device_type = device.get("device_type")
 
-    # ✅ 2. 接続とプロンプト取得
+        try:
+            validate_device_type_for_list(hostname=hostname,
+                                          node_device_type=node_device_type,
+                                          list_name=args.commands_list,
+                                          list_device_type=list_device_type)
+        except ValueError as e:
+            if getattr(args, "force", False):
+                if not args.no_output:
+                    print_warning(f"{e} (--force指定のため続行ケロ🐸)")
+            else:
+                if not args.no_output:
+                    print_error(str(e))
+                    elapsed = perf_counter() - timer
+                    print_warning(f"<NODE: {hostname}> ❌中断ケロ🐸 (elapsed: {elapsed:.2f}s)")
+                return hostname # このホストはスキップ
+
+    # ✅ 3. 接続とプロンプト取得
     try:
         connection, prompt, hostname = connect_to_device(device, hostname)
     except ConnectionError as e:
@@ -257,7 +281,7 @@ def _handle_execution(device: dict, args, poutput, hostname, *, output_buffers: 
     if not args.no_output:
         print_success(f"<NODE: {hostname}> 🔗接続成功ケロ🐸")
 
-    # ✅ 3. コマンド実行（単発 or リスト）
+    # ✅ 4. コマンド実行（単発 or リスト）
     try:
         result_output_string = _execute_commands(connection, prompt, args, exec_commands, parser_kind)
     except Exception as e:
@@ -273,9 +297,10 @@ def _handle_execution(device: dict, args, poutput, hostname, *, output_buffers: 
         safe_disconnect(connection)
         return hostname # 失敗時
 
-    # ✅ 4. 接続終了
+    # ✅ 5. 接続終了
     safe_disconnect(connection)
 
+    # ✅ 6. parser option 使用時の json と ordered 用の処理
     # display_text = 生テキスト or json 文字列
     # 表示用。save_json側でjson.dumpsが入るのでsave_jsonの呼び出し時はresult_output_stringを渡す。
     display_text = result_output_string 
@@ -286,7 +311,7 @@ def _handle_execution(device: dict, args, poutput, hostname, *, output_buffers: 
     if output_buffers is not None and args.group and args.ordered and not args.no_output and not args.quiet:
         output_buffers[hostname] = display_text
     
-    # ✅ 5. ログ保存（--log指定時のみ）
+    # ✅ 7. ログ保存（--log指定時のみ）
     if getattr(args, "log", False):
         if not getattr(args, "no_output", False):
             print_info(f"<NODE: {hostname}> 💾ログ保存モードONケロ🐸🔛")
@@ -298,7 +323,7 @@ def _handle_execution(device: dict, args, poutput, hostname, *, output_buffers: 
             print_success(f"<NODE: {hostname}> 💾ログ保存完了ケロ🐸⏩⏩⏩ {log_path}")
 
 
-    # ✅ 6. 結果表示
+    # ✅ 8. 結果表示
     if not args.no_output:
         if args.quiet:
             print_info(f"<NODE: {hostname}> 📄OUTPUTは省略するケロ (hidden by --quiet) 🐸")
