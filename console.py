@@ -3,7 +3,6 @@ from cmd2 import Cmd2ArgumentParser
 
 from netmiko.utilities import check_serial_port
 
-from rich.console import Console
 from rich_argparse import RawTextRichHelpFormatter
 
 from pathlib import Path
@@ -13,7 +12,7 @@ from time import perf_counter
 
 from message import print_error, print_info, print_warning, print_success
 from load_and_validate_yaml import get_validated_inventory_data, get_validated_commands_list, get_commands_list_device_type, validate_device_type_for_list
-from output_logging import save_log
+from output_logging import save_log, save_json
 from prompt_utils import wait_for_prompt_returned
 from build_device import build_device_and_hostname_for_console
 from connect_device import connect_to_device_for_console, safe_disconnect
@@ -67,7 +66,7 @@ textfsm_template_help = ("--parser optionで textfsm を指定する際に templ
 ### PARSER_SECTION ###
 ######################
 # netmiko_console_parser = argparse.ArgumentParser(formatter_class=argparse.RawTextHelpFormatter)
-netmiko_console_parser = Cmd2ArgumentParser(formatter_class=RawTextRichHelpFormatter, description="[green]execute コマンド🐸[/green]")
+netmiko_console_parser = Cmd2ArgumentParser(formatter_class=RawTextRichHelpFormatter, description="[green]console コマンド🐸[/green]")
 # "-h" はhelpと競合するから使えない。
 netmiko_console_parser.add_argument("-s", "--serial", type=str, default="/dev/ttyUSB0", help=serial_help)
 netmiko_console_parser.add_argument("-b", "--baudrate", type=int, default=None, help=baudrate_help)
@@ -84,7 +83,7 @@ netmiko_console_parser.add_argument("--textfsm-template", type=str,  help=textfs
 netmiko_console_parser.add_argument("--force", action="store_true", help=force_help)
 
 # mutually exclusive
-target_node = netmiko_console_parser.add_mutually_exclusive_group(required=True)
+target_node = netmiko_console_parser.add_mutually_exclusive_group(required=False)
 target_node.add_argument("--host", type=str, nargs="?", default=None, help=host_help, completer=host_names_completer)
 target_node.add_argument("--group", type=str, nargs="?", default=None, help=group_help, completer=group_names_completer)
 
@@ -98,8 +97,179 @@ silence_group = netmiko_console_parser.add_mutually_exclusive_group(required=Fal
 silence_group.add_argument("--quiet", action="store_true", help=quiet_help)
 silence_group.add_argument("--no-output", action="store_true", help=no_output_help)
 
-console = Console()
 
+def _execute_console_command(connection, prompt, command, *, args, parser_kind, expect_string: str | None):
+    if parser_kind:
+        if parser_kind == "genie":
+            output = connection.send_command(command, use_genie=True, raise_parsing_error=True, read_timeout=args.read_timeout, expect_string=expect_string)
+            full_output = output
+        elif parser_kind == "textfsm":
+            template = str(Path(args.textfsm_template))
+            output = connection.send_command(command, use_textfsm=True, raise_parsing_error=True,
+                                             textfsm_template=template, read_timeout=args.read_timeout, expect_string=expect_string)
+            full_output = output
+    else:
+        output = connection.send_command(command, expect_string=expect_string, read_timeout=args.read_timeout)
+        full_output = f"{prompt} {command}\n{output}\n"
+
+    return full_output
+
+
+def _execute_console_commands_list(connection, prompt, exec_commands, *, args, parser_kind, expect_string: str | None):
+    full_output_list = []
+
+    # textfsmだけ先に一度だけ作る 
+    if parser_kind == "textfsm":
+        template = str(Path(args.textfsm_template))
+
+    for command in exec_commands:
+        if parser_kind:
+            if parser_kind == "genie":
+                output = connection.send_command(command, use_genie=True, raise_parsing_error=True, read_timeout=args.read_timeout, expect_string=expect_string)
+                full_output = output
+                full_output_list.append(full_output)
+            elif parser_kind == "textfsm":
+                output = connection.send_command(command, use_textfsm=True, raise_parsing_error=True,
+                                                 textfsm_template=template, read_timeout=args.read_timeout, expect_string=expect_string)
+                full_output = output
+                full_output_list.append(full_output)
+        else:
+            output = connection.send_command(command, read_timeout=args.read_timeout, expect_string=expect_string)
+            full_output = f"{prompt} {command}\n{output}\n"
+            full_output_list.append(full_output)
+    
+    if parser_kind == "genie":
+        return full_output_list
+    elif parser_kind == "textfsm":
+        return full_output_list
+    else:
+        return "".join(full_output_list)
+
+
+def _execute_console_commands(connection, prompt, args, exec_commands, parser_kind: str | None = None, *, expect_string: str | None = None):
+    if args.command:
+        return _execute_console_command(connection, prompt, args.command, args=args, parser_kind=parser_kind, expect_string=expect_string)
+    elif args.commands_list:
+        return _execute_console_commands_list(connection, prompt, exec_commands, args=args, parser_kind=parser_kind, expect_string=expect_string)
+    else:
+        raise ValueError("command または commands_list のいずれかが必要ケロ🐸")
+
+
+def _handle_console_execution(device: dict, args, poutput, hostname: str, *, output_buffers: dict | None = None, parser_kind: str | None = None) -> str | None:
+    timer = perf_counter() # ⌚ start
+
+    # ❶ commands-listは接続前に検証
+    # ※ 接続前なので try/except で安全に中断する
+    result_output_string = ""
+    exec_commands = None # args.commandのとき未定義になるため必要。
+    if args.commands_list:
+        try:
+            exec_commands = get_validated_commands_list(args)
+        except (FileNotFoundError, ValueError) as e:
+            print_error(str(e))
+            elapsed = perf_counter() - timer
+            print_warning(f"❌中断ケロ🐸 (elapsed: {elapsed:.2f}s)")
+            return hostname
+    
+    # ❷ device_type ミスマッチチェック (接続前に実施)
+    if args.commands_list:
+        list_device_type = get_commands_list_device_type(args.commands_list)
+        node_device_type = device.get("device_type")
+
+        # console の device_type は *_serial になりがちなので、末尾だけ安全に外して比較
+        node_device_type_base = re.sub(r"_serial$", "", node_device_type)
+
+        try:
+            validate_device_type_for_list(hostname=hostname,
+                                          node_device_type=node_device_type_base,
+                                          list_name=args.commands_list,
+                                          list_device_type=list_device_type)
+        except ValueError as e:
+            if getattr(args, "force", False):
+                if not args.no_output:
+                    print_warning(f"{e} (--force指定のため続行ケロ🐸)")
+            else:
+                if not args.no_output:
+                    print_error(str(e))
+                    elapsed = perf_counter() - timer
+                    print_warning(f"<NODE: {hostname}> ❌中断ケロ🐸 (elapsed: {elapsed:.2f}s)")
+                return hostname # このホストはスキップ
+
+    
+    # ❸ 接続 (enableまで)
+    connection = None 
+    try:
+        connection, prompt, hostname = connect_to_device_for_console(device, hostname, require_enable=True)
+    except ConnectionError as e:
+        if not args.no_output:
+            print_error(str(e))
+            elapsed = perf_counter() - timer
+            print_warning(f"<NODE: {hostname}> ❌中断ケロ🐸 (elapsed: {elapsed:.2f}s)")
+            return
+        
+    if not args.no_output:
+        print_success(f"<NODE: {hostname}> 🔗接続成功ケロ🐸")
+
+    # ❹ コマンド実行（単発 or リスト）
+    # prompt 同期 必要に応じて 必要か？
+    wait_for_prompt_returned(connection, sleep_time=SLEEP_TIME)
+    # 実行時点のベースプロンプトから期待プロンプトを生成
+    expect_string = re.escape(prompt)
+
+    try:
+        result_output_string = _execute_console_commands(connection, prompt, args, exec_commands, parser_kind, expect_string=expect_string)
+    except Exception as e:
+        if not args.no_output:
+            if args.parser == "genie":
+                print_error(f"<NODE: {hostname}> 🧩Genieパース失敗ケロ🐸: {e}")
+            elif args.parser == "textfsm":
+                print_error(f"<NODE: {hostname}> 🧩textfsmパース失敗ケロ🐸: {e}")
+            else:   
+                print_error(f"<NODE: {hostname}> ⚠️実行エラーケロ🐸: {e}")
+            elapsed = perf_counter() - timer
+            print_warning(f"<NODE: {hostname}> ❌中断ケロ🐸 (elapsed: {elapsed:.2f}s)")
+        safe_disconnect(connection)
+        return hostname # 失敗時
+
+
+    # ❺ 安全に切断
+    safe_disconnect(connection)
+
+    # ❻ parser option 使用時の json と ordered 用の処理
+    # display_text = 生テキスト or json 文字列
+    # 表示用。save_json側でjson.dumpsが入るのでsave_jsonの呼び出し時はresult_output_stringを渡す。
+    display_text = result_output_string 
+    if parser_kind and isinstance(result_output_string, (list, dict)):
+        display_text = json.dumps(result_output_string, ensure_ascii=False, indent=2)
+
+    # ordered option用の貯める処理。(quiet | no-outputのときは貯めない。)
+    if output_buffers is not None and args.group and args.ordered and not args.no_output and not args.quiet:
+        output_buffers[hostname] = display_text
+    
+    # ❼ ログ保存（--log指定時のみ）
+    if getattr(args, "log", False):
+        if not getattr(args, "no_output", False):
+            print_info(f"<NODE: {hostname}> 💾ログ保存モードONケロ🐸🔛")
+        if parser_kind in ("genie", "textfsm") and isinstance(result_output_string, (list, dict)):
+            log_path = save_json(result_output_string, hostname, args, parser_kind=parser_kind, mode="console")
+        else:
+            log_path = save_log(result_output_string, hostname, args, mode="console")
+        if not getattr(args, "no_output", False):
+            print_success(f"<NODE: {hostname}> 💾ログ保存完了ケロ🐸⏩⏩⏩ {log_path}")
+
+    # ❽ 画面表示
+    if not args.no_output:
+        if args.quiet:
+            print_info(f"<NODE: {hostname}> 📄OUTPUTは省略するケロ (hidden by --quiet) 🐸")
+        else:
+            if not (args.group and args.ordered and output_buffers is not None):
+                print_info(f"<NODE: {hostname}> 📄OUTPUTケロ🐸")
+                poutput(display_text)
+    elapsed = perf_counter() - timer
+    if not args.no_output:
+        print_success(f"<NODE: {hostname}> 🔚実行完了ケロ🐸 (elapsed: {elapsed:.2f}s)")
+    return None # 成功時
+            
 
 @cmd2.with_argparser(netmiko_console_parser)
 def do_console(self, args):
@@ -123,8 +293,6 @@ def do_console(self, args):
     Raise:
         ValueError: inventory 取得失敗、enable モード移行失敗、YAML 読み取り失敗など
     """
-    timer = perf_counter() # ⌚ start
-
     if args.ordered and not args.group:
         print_error("--ordered は --group 指定時のみ使用できるケロ🐸")
         return
@@ -161,22 +329,8 @@ def do_console(self, args):
     except ValueError as e:
         if not args.no_output:
             print_error(str(e))
-            elapsed = perf_counter() - timer
-            print_warning(f"❌中断ケロ🐸 (elapsed: {elapsed:.2f}s)")
+            print_warning(f"❌中断ケロ🐸")
             return
-
-    # ❷ commands-listは接続前に検証
-    # ※ 接続前なので try/except で安全に中断する
-    exec_commands = None
-    if args.commands_list:
-        try:
-            exec_commands = get_validated_commands_list(args)
-        except (FileNotFoundError, ValueError) as e:
-            print_error(str(e))
-            elapsed = perf_counter() - timer
-            print_warning(f"❌中断ケロ🐸 (elapsed: {elapsed:.2f}s)")
-            return
-
 
     # ❸ inventoryの取得(--host or --group)
     inventory_data = None
@@ -191,90 +345,80 @@ def do_console(self, args):
     except (NotImplementedError, FileNotFoundError, ValueError) as e:
         if not args.no_output:
             print_error(str(e))
-            elapsed = perf_counter() - timer
-            print_warning(f"❌中断ケロ🐸 (elapsed: {elapsed:.2f}s)")
+            print_warning(f"❌中断ケロ🐸")
             return
 
-    # ❹ device 構築
-    device , hostname = build_device_and_hostname_for_console(args, inventory_data, serial_port)
+    if args.host:
+        device , hostname = build_device_and_hostname_for_console(args, inventory_data, serial_port)
+        result_failed_hostname = _handle_console_execution(device, args, self.poutput, hostname, parser_kind=parser_kind)
+        if result_failed_hostname and not args.no_output:
+            print_error(f"❎ 🐸なんかトラブルケロ@: {result_failed_hostname}")
+        return
+    elif args.group:
+        device , hostname = build_device_and_hostname_for_console(args, inventory_data, serial_port)
+        # TODO: group実装時につくる
+    # max_workers = default_workers(len(device_list), args)
 
-    # ✅ 2. device_type ミスマッチチェック (接続前に実施)
-    if args.commands_list:
-        list_device_type = get_commands_list_device_type(args.commands_list)
-        node_device_type = device.get("device_type")
+    #     result_failed_hostname_list = []
 
-        # console の device_type は *_serial になりがちなので、末尾だけ安全に外して比較
-        node_device_type_base = re.sub(r"_serial$", "", node_device_type)
+    #     # ✅ --ordered 用の本文バッファ（hostname -> str）
+    #     ordered_output_buffers = {}  # {hostname: collected_output}
 
-        try:
-            validate_device_type_for_list(hostname=hostname,
-                                          node_device_type=node_device_type_base,
-                                          list_name=args.commands_list,
-                                          list_device_type=list_device_type)
-        except ValueError as e:
-            if getattr(args, "force", False):
-                if not args.no_output:
-                    print_warning(f"{e} (--force指定のため続行ケロ🐸)")
-            else:
-                if not args.no_output:
-                    print_error(str(e))
-                    elapsed = perf_counter() - timer
-                    print_warning(f"<NODE: {hostname}> ❌中断ケロ🐸 (elapsed: {elapsed:.2f}s)")
-                return hostname # このホストはスキップ
+    #     with ThreadPoolExecutor(max_workers=max_workers) as pool:
 
-    
-    # ❺ 接続 (enableまで)
-    connection = None 
-    try:
-        connection, prompt, hostname = connect_to_device_for_console(device, hostname, require_enable=True)
-    except ConnectionError as e:
-        if not args.no_output:
-            print_error(str(e))
-            elapsed = perf_counter() - timer
-            print_warning(f"<NODE: {hostname}> ❌中断ケロ🐸 (elapsed: {elapsed:.2f}s)")
-            return
+    #         futures = []
+    #         future_to_hostname = {} 
+
+    #         ordered_output_enabled =  args.ordered and not args.quiet and not args.no_output
+
+    #         for device, hostname in zip(device_list, hostname_list):
+    #             # --orderedがあって--quietと--no_outputがないこと。
+    #             if ordered_output_enabled:
+    #                 # 順番を並び替えるために貯める。
+    #                 future = pool.submit(_handle_execution, device, args, self.poutput, hostname, output_buffers=ordered_output_buffers, parser_kind=parser_kind)
+    #             else:
+    #                 future = pool.submit(_handle_execution, device, args, self.poutput, hostname, parser_kind=parser_kind)
+                
+    #             futures.append(future)
+    #             future_to_hostname[future] = hostname
+
+    #         for future in as_completed(futures):
+    #             hostname = future_to_hostname.get(future, "UNKNOWN")
+    #             try:
+    #                 result_failed_hostname = future.result()
+    #                 if result_failed_hostname:
+    #                     result_failed_hostname_list.append(result_failed_hostname)
+    #             except Exception as e:
+    #                 # _handle_execution で捕まえていない想定外の例外
+    #                 if not args.no_output:
+    #                     print_error(f"⚠️ 未処理の例外: {hostname}:{e}")
         
-    if not args.no_output:
-        print_success(f"<NODE: {hostname}> 🔗接続成功ケロ🐸")
+    #     # --orderedの場合は、ここで実行結果をまとめて表示する。
+    #     if ordered_output_enabled:
+    #         for h in sorted(ordered_output_buffers.keys(), key=lambda x: (x is None, x or "")):
+    #             print_info(f"NODE: {h} 📄OUTPUTケロ🐸")
+    #             self.poutput(ordered_output_buffers[h])
 
-    try:
-        # prompt 同期 必要に応じて 必要か？
-        wait_for_prompt_returned(connection, sleep_time=SLEEP_TIME)
-        
-        # 実行時点のベースプロンプトから期待プロンプトを生成
-        expect_prompt = re.escape(prompt)
+    #     # 結果をまとめて表示
+    #     if result_failed_hostname_list and not args.no_output:
+    #         print_warning(f"❎ 🐸なんかトラブルケロ: {', '.join(sorted(result_failed_hostname_list))}")
+    #     else:
+    #         if not args.no_output:
+    #             print_success("✅ すべてのホストで実行完了ケロ🐸")
 
-        # ❻ 実行
-        if args.command:
-            output = connection.send_command(args.command, expect_string=expect_prompt, read_timeout=args.read_timeout)
-            full_output = f"{prompt} {args.command}\n{output}\n"
-            result_output_string = full_output
+        pass
+    else:
+        # hostやgroupを使用しないとき用
+        device , hostname = build_device_and_hostname_for_console(args, inventory_data, serial_port)
+        result_failed_hostname = _handle_console_execution(device, args, self.poutput, hostname, parser_kind=parser_kind)
+        if result_failed_hostname and not args.no_output:
+            print_error(f"❎ 🐸なんかトラブルケロ@: {result_failed_hostname}")
+        return
 
 
-        elif args.commands_list:
 
-            full_output_list = []
 
-            for command in exec_commands:
-                output = connection.send_command(command, expect_string=expect_prompt, read_timeout=args.read_timeout)
-                full_output = f"{prompt} {command}\n{output}\n"
-                full_output_list.append(full_output)
-            
-            result_output_string =  "\n".join(full_output_list)
 
-        # ❼ ログの保存
-        if args.log:
-            save_log(result_output_string, hostname, args, mode="console")
+ 
 
-        # ❽ 画面表示
-        if not (args.quiet or args.no_output):
-            self.poutput(result_output_string)
-        wait_for_prompt_returned(connection, sleep_time=SLEEP_TIME)
 
-        elapsed = perf_counter() - timer
-        if not args.no_output:
-            print_success(f"<NODE: {hostname}> 🔚実行完了ケロ🐸 (elapsed: {elapsed:.2f}s)")
-            
-    # 安全に切断
-    finally:
-        safe_disconnect(connection)
