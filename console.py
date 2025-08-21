@@ -6,6 +6,8 @@ from netmiko.utilities import check_serial_port
 from rich.console import Console
 from rich_argparse import RawTextRichHelpFormatter
 
+from pathlib import Path
+import json
 import re
 from time import perf_counter
 
@@ -53,6 +55,12 @@ command_help = "1つのコマンドを直接指定して実行します。"
 command_list_help = "コマンドリスト名（commands-lists.yamlに定義）を指定して実行します。"
 secret_help = ("enable に入るための secret を指定します。(省略時は password を流用します。)\n")
 force_help = "device_type の不一致や未設定エラーを無視して強制実行するケロ🐸"
+quiet_help = ("画面上の出力（nodeのcommandの結果）を抑制します。進捗・エラーは表示されます。このオプションを使う場合は --log が必須です。")
+no_output_help = ("画面上の出力を完全に抑制します（進捗・エラーも表示しません）。 --log が未指定の場合は実行を中止します。")
+ordered_help = ("--group指定時にoutputの順番を昇順に並べ変えます。 このoptionを使用しない場合は実行完了順に表示されます。--group 未指定の場合は実行を中止します。")
+parser_help = ("コマンドの結果をparseします。textfsmかgenieを指定します。")
+textfsm_template_help = ("--parser optionで textfsm を指定する際に template ファイルを渡すためのオプションです。\n"
+                         "--parser optionで textfsm を指定する際は必須です。(genieのときは必要ありません。)")
 
 
 ######################
@@ -70,6 +78,9 @@ netmiko_console_parser.add_argument("-r", "--read_timeout", type=int, default=60
 netmiko_console_parser.add_argument("-l", "--log", action="store_true", help=log_help)
 netmiko_console_parser.add_argument("-m", "--memo", type=str, default="", help=memo_help)
 netmiko_console_parser.add_argument("-S", "--secret", type=str, default="", help=secret_help)
+netmiko_console_parser.add_argument("-o", "--ordered", action="store_true", help=ordered_help)
+netmiko_console_parser.add_argument("--parser", "--parse",dest="parser",  choices=["textfsm", "genie", "text-fsm"], help=parser_help)
+netmiko_console_parser.add_argument("--textfsm-template", type=str,  help=textfsm_template_help)
 netmiko_console_parser.add_argument("--force", action="store_true", help=force_help)
 
 # mutually exclusive
@@ -82,6 +93,10 @@ target_command = netmiko_console_parser.add_mutually_exclusive_group(required=Tr
 target_command.add_argument("-c", "--command", type=str, default="", help=command_help)
 target_command.add_argument("-L", "--commands-list", type=str, default="", help=command_list_help, completer=commands_list_names_completer)
 
+# mutually exclusive
+silence_group = netmiko_console_parser.add_mutually_exclusive_group(required=False)
+silence_group.add_argument("--quiet", action="store_true", help=quiet_help)
+silence_group.add_argument("--no-output", action="store_true", help=no_output_help)
 
 console = Console()
 
@@ -110,15 +125,45 @@ def do_console(self, args):
     """
     timer = perf_counter() # ⌚ start
 
+    if args.ordered and not args.group:
+        print_error("--ordered は --group 指定時のみ使用できるケロ🐸")
+        return
+
+    if args.quiet and not args.log:
+        print_error("--quietオプションを使用するには--logが必要ケロ🐸")
+        return
+    elif args.no_output and not args.log:
+        # 現仕様：完全サイレント。黙って終了（将来 notify 実装時に or を足すだけでOK）
+        return
+
+    parser_kind = None
+    if args.parser:
+        # 表記ゆれ正規化（互換用）
+        if args.parser == "text-fsm":
+            print_warning("`text-fsm` は非推奨ケロ🐸 → `textfsm` を使ってね")
+            args.parser = "textfsm"
+        parser_kind = args.parser
+
+    if args.parser == "textfsm":
+        if not args.textfsm_template:
+            print_error("--parser textfsm を使うには --textfsm-template <PATH> が必要ケロ🐸")
+            return
+        if not Path(args.textfsm_template).is_file():
+            print_error(f"指定のtemplateが見つからないケロ🐸: {args.textfsm_template}")
+            return
+
+
     # ❶ シリアルポートのチェック
     try:
         serial_port = check_serial_port(args.serial)
-        print_info(f"✅ 使用可能なポート: {serial_port}")
+        if not args.no_output:
+            print_info(f"✅ 使用可能なポート: {serial_port}")
     except ValueError as e:
-        print_error(str(e))
-        elapsed = perf_counter() - timer
-        print_warning(f"❌中断ケロ🐸 (elapsed: {elapsed:.2f}s)")
-        return
+        if not args.no_output:
+            print_error(str(e))
+            elapsed = perf_counter() - timer
+            print_warning(f"❌中断ケロ🐸 (elapsed: {elapsed:.2f}s)")
+            return
 
     # ❷ commands-listは接続前に検証
     # ※ 接続前なので try/except で安全に中断する
@@ -126,7 +171,7 @@ def do_console(self, args):
     if args.commands_list:
         try:
             exec_commands = get_validated_commands_list(args)
-        except (NotImplementedError, FileNotFoundError, ValueError) as e:
+        except (FileNotFoundError, ValueError) as e:
             print_error(str(e))
             elapsed = perf_counter() - timer
             print_warning(f"❌中断ケロ🐸 (elapsed: {elapsed:.2f}s)")
@@ -143,11 +188,12 @@ def do_console(self, args):
             raise NotImplementedError
             inventory_data = get_validated_inventory_data(host=args.group)
         # TODO: group対応は将来実装予定
-    except (FileNotFoundError, ValueError) as e:
-        print_error(str(e))
-        elapsed = perf_counter() - timer
-        print_warning(f"❌中断ケロ🐸 (elapsed: {elapsed:.2f}s)")
-        return
+    except (NotImplementedError, FileNotFoundError, ValueError) as e:
+        if not args.no_output:
+            print_error(str(e))
+            elapsed = perf_counter() - timer
+            print_warning(f"❌中断ケロ🐸 (elapsed: {elapsed:.2f}s)")
+            return
 
     # ❹ device 構築
     device , hostname = build_device_and_hostname_for_console(args, inventory_data, serial_port)
@@ -182,12 +228,14 @@ def do_console(self, args):
     try:
         connection, prompt, hostname = connect_to_device_for_console(device, hostname, require_enable=True)
     except ConnectionError as e:
-        print_error(str(e))
-        elapsed = perf_counter() - timer
-        print_warning(f"<NODE: {hostname}> ❌中断ケロ🐸 (elapsed: {elapsed:.2f}s)")
-        return
-    
-    print_success(f"<NODE: {hostname}> 🔗接続成功ケロ🐸")
+        if not args.no_output:
+            print_error(str(e))
+            elapsed = perf_counter() - timer
+            print_warning(f"<NODE: {hostname}> ❌中断ケロ🐸 (elapsed: {elapsed:.2f}s)")
+            return
+        
+    if not args.no_output:
+        print_success(f"<NODE: {hostname}> 🔗接続成功ケロ🐸")
 
     try:
         # prompt 同期 必要に応じて 必要か？
@@ -219,11 +267,13 @@ def do_console(self, args):
             save_log(result_output_string, hostname, args, mode="console")
 
         # ❽ 画面表示
-        self.poutput(result_output_string)
+        if not (args.quiet or args.no_output):
+            self.poutput(result_output_string)
         wait_for_prompt_returned(connection, sleep_time=SLEEP_TIME)
 
         elapsed = perf_counter() - timer
-        print_success(f"<NODE: {hostname}> 🔚実行完了ケロ🐸 (elapsed: {elapsed:.2f}s)")
+        if not args.no_output:
+            print_success(f"<NODE: {hostname}> 🔚実行完了ケロ🐸 (elapsed: {elapsed:.2f}s)")
             
     # 安全に切断
     finally:
