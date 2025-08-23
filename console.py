@@ -60,6 +60,8 @@ ordered_help = ("--group指定時にoutputの順番を昇順に並べ変えま�
 parser_help = ("コマンドの結果をparseします。textfsmかgenieを指定します。")
 textfsm_template_help = ("--parser optionで textfsm を指定する際に template ファイルを渡すためのオプションです。\n"
                          "--parser optionで textfsm を指定する際は必須です。(genieのときは必要ありません。)")
+post_reconnect_baudrate_help = "実行後にこのボーレートで再接続確認だけ行うケロ🐸"
+connect_only_help = "コマンドを実行せず、接続確認だけ行うケロ🐸（enable まで）"
 
 
 ######################
@@ -81,6 +83,8 @@ netmiko_console_parser.add_argument("-o", "--ordered", action="store_true", help
 netmiko_console_parser.add_argument("--parser", "--parse",dest="parser",  choices=["textfsm", "genie", "text-fsm"], help=parser_help)
 netmiko_console_parser.add_argument("--textfsm-template", type=str,  help=textfsm_template_help)
 netmiko_console_parser.add_argument("--force", action="store_true", help=force_help)
+netmiko_console_parser.add_argument("--post-reconnect-baudrate", type=int, help=post_reconnect_baudrate_help)
+
 
 # mutually exclusive
 target_node = netmiko_console_parser.add_mutually_exclusive_group(required=False)
@@ -88,14 +92,15 @@ target_node.add_argument("--host", type=str, nargs="?", default=None, help=host_
 target_node.add_argument("--group", type=str, nargs="?", default=None, help=group_help, completer=group_names_completer)
 
 # mutually exclusive
-target_command = netmiko_console_parser.add_mutually_exclusive_group(required=True)
+target_command = netmiko_console_parser.add_mutually_exclusive_group(required=False)
 target_command.add_argument("-c", "--command", type=str, default="", help=command_help)
 target_command.add_argument("-L", "--commands-list", type=str, default="", help=command_list_help, completer=commands_list_names_completer)
+target_command.add_argument("--connect-only", action="store_true", help=connect_only_help)
 
 # mutually exclusive
 silence_group = netmiko_console_parser.add_mutually_exclusive_group(required=False)
 silence_group.add_argument("--quiet", action="store_true", help=quiet_help)
-silence_group.add_argument("--no-output", action="store_true", help=no_output_help)
+silence_group.add_argument("--no-output", "--no_output", dest="no_output", action="store_true", help=no_output_help)
 
 
 def _execute_console_command(connection, prompt, command, *, args, parser_kind, expect_string: str | None):
@@ -116,34 +121,38 @@ def _execute_console_command(connection, prompt, command, *, args, parser_kind, 
 
 
 def _execute_console_commands_list(connection, prompt, exec_commands, *, args, parser_kind, expect_string: str | None):
-    full_output_list = []
+    # full_output_list = []
 
-    # textfsmだけ先に一度だけ作る 
-    if parser_kind == "textfsm":
-        template = str(Path(args.textfsm_template))
+    # # textfsmだけ先に一度だけ作る 
+    # if parser_kind == "textfsm":
+    #     template = str(Path(args.textfsm_template))
 
-    for command in exec_commands:
-        if parser_kind:
-            if parser_kind == "genie":
-                output = connection.send_command(command, use_genie=True, raise_parsing_error=True, read_timeout=args.read_timeout, expect_string=expect_string)
-                full_output = output
-                full_output_list.append(full_output)
-            elif parser_kind == "textfsm":
-                output = connection.send_command(command, use_textfsm=True, raise_parsing_error=True,
-                                                 textfsm_template=template, read_timeout=args.read_timeout, expect_string=expect_string)
-                full_output = output
-                full_output_list.append(full_output)
-        else:
-            output = connection.send_command(command, read_timeout=args.read_timeout, expect_string=expect_string)
-            full_output = f"{prompt} {command}\n{output}\n"
-            full_output_list.append(full_output)
+    # for command in exec_commands:
+    #     if parser_kind:
+    #         if parser_kind == "genie":
+    #             output = connection.send_command(command, use_genie=True, raise_parsing_error=True, read_timeout=args.read_timeout, expect_string=expect_string)
+    #             full_output = output
+    #             full_output_list.append(full_output)
+    #         elif parser_kind == "textfsm":
+    #             output = connection.send_command(command, use_textfsm=True, raise_parsing_error=True,
+    #                                              textfsm_template=template, read_timeout=args.read_timeout, expect_string=expect_string)
+    #             full_output = output
+    #             full_output_list.append(full_output)
+    #     else:
+    #         output = connection.send_command(command, read_timeout=args.read_timeout, expect_string=None)
+    #         full_output = f"{prompt} {command}\n{output}\n"
+    #         full_output_list.append(full_output)
     
-    if parser_kind == "genie":
-        return full_output_list
-    elif parser_kind == "textfsm":
-        return full_output_list
-    else:
-        return "".join(full_output_list)
+    # if parser_kind == "genie":
+    #     return full_output_list
+    # elif parser_kind == "textfsm":
+    #     return full_output_list
+    # else:
+    #     return "".join(full_output_list)
+    
+
+    return connection.send_config_set(exec_commands, read_timeout=args.read_timeout)
+
 
 
 def _execute_console_commands(connection, prompt, args, exec_commands, parser_kind: str | None = None, *, expect_string: str | None = None):
@@ -153,6 +162,31 @@ def _execute_console_commands(connection, prompt, args, exec_commands, parser_ki
         return _execute_console_commands_list(connection, prompt, exec_commands, args=args, parser_kind=parser_kind, expect_string=expect_string)
     else:
         raise ValueError("command または commands_list のいずれかが必要ケロ🐸")
+
+
+def reconnect_with_baudrate(device: dict, hostname: str, new_baudrate: int, *, args) -> str | None:
+    """
+    指定のボーレートで再接続確認だけ行う。
+    成功: None を返す（失敗なし）
+    失敗: 失敗した hostname を返す（呼び出し側の集計で使える）
+    """
+    device_re = dict(device) # 再接続用にコピーを作成 元のdeviceに影響を与えない。
+    serial_settings = dict(device_re.get("serial_settings", {}))
+    serial_settings["baudrate"] = int(new_baudrate)
+    device_re["serial_settings"] = serial_settings
+
+    try:
+        reconnect_connection, reconnect_prompt, reconnect_hostname = connect_to_device_for_console(
+            device_re, hostname, require_enable=True
+        )
+        safe_disconnect(reconnect_connection)
+        if not getattr(args, "no_output", False):
+            print_success(f"<NODE: {reconnect_hostname}> 🔁{new_baudrate}bps で再接続確認OKケロ🐸")
+        return None
+    except Exception as e:
+        if not getattr(args, "no_output", False):
+            print_error(f"<NODE: {hostname}> 🔁再接続失敗ケロ🐸: {e}")
+        return hostname
 
 
 def _handle_console_execution(device: dict, args, poutput, hostname: str, *, output_buffers: dict | None = None, parser_kind: str | None = None) -> str | None:
@@ -205,10 +239,17 @@ def _handle_console_execution(device: dict, args, poutput, hostname: str, *, out
             print_error(str(e))
             elapsed = perf_counter() - timer
             print_warning(f"<NODE: {hostname}> ❌中断ケロ🐸 (elapsed: {elapsed:.2f}s)")
-            return
+            return hostname
         
     if not args.no_output:
         print_success(f"<NODE: {hostname}> 🔗接続成功ケロ🐸")
+
+    if getattr(args, "connect_only", False):
+        safe_disconnect(connection)
+        elapsed = perf_counter() - timer
+        if not args.no_output:
+            print_success(f"<NODE: {hostname}> 🔚接続確認だけ完了ケロ🐸 (elapsed: {elapsed:.2f}s)")
+        return None
 
     # ❹ コマンド実行（単発 or リスト）
     # prompt 同期 必要に応じて 必要か？
@@ -234,6 +275,11 @@ def _handle_console_execution(device: dict, args, poutput, hostname: str, *, out
 
     # ❺ 安全に切断
     safe_disconnect(connection)
+
+    if getattr(args, "post_reconnect_baudrate", None):
+        failed = reconnect_with_baudrate(device, hostname, args.post_reconnect_baudrate, args=args)
+        if failed:
+            return failed
 
     # ❻ parser option 使用時の json と ordered 用の処理
     # display_text = 生テキスト or json 文字列
@@ -293,6 +339,14 @@ def do_console(self, args):
     Raise:
         ValueError: inventory 取得失敗、enable モード移行失敗、YAML 読み取り失敗など
     """
+    if not args.connect_only and not (args.command or args.commands_list):
+        print_error("コマンド未指定ケロ🐸（-c か -L か --connect-only のいずれかが必要）")
+        return
+    
+    if args.connect_only and args.post_reconnect_baudrate:
+        print_error("--connect-only と --post-reconnect-baudrate は同時に使えないケロ🐸")
+        return
+
     if args.ordered and not args.group:
         print_error("--ordered は --group 指定時のみ使用できるケロ🐸")
         return
@@ -321,6 +375,8 @@ def do_console(self, args):
             return
 
 
+
+
     # ❶ シリアルポートのチェック
     try:
         serial_port = check_serial_port(args.serial)
@@ -340,7 +396,7 @@ def do_console(self, args):
             inventory_data = get_validated_inventory_data(host=args.host)
         elif args.group:
             raise NotImplementedError
-            inventory_data = get_validated_inventory_data(host=args.group)
+            inventory_data = get_validated_inventory_data(group=args.group)
         # TODO: group対応は将来実装予定
     except (NotImplementedError, FileNotFoundError, ValueError) as e:
         if not args.no_output:
