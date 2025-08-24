@@ -35,7 +35,7 @@ baudrate_help = ("使用するbaudrateを指定します。\n"
                  "example: console --baudrate 9600")
 username_help = "console接続に使用するユーザー名を指定します。"
 password_help = "console接続に使用するパスワードを指定します。"
-device_type_help = "Netmikoにおけるデバイスタイプを指定します（例: cisco_ios）。省略時は 'cisco_ios_serial' です。"
+device_type_help = "Netmikoにおけるデバイスタイプを指定します（例: cisco_ios）。"
 host_help = ("inventory.yamlに定義されたホスト名を指定します。\n"
              "--host 指定時は他オプション（username, password, device_type, baudrate）は無視されます。")
 group_help = "[bright_yellow]inventory.yaml[/bright_yellow]に定義されたグループ名を指定します。グループ内の全ホストにコマンドを実行します。"
@@ -60,7 +60,7 @@ ordered_help = ("--group指定時にoutputの順番を昇順に並べ変えま�
 parser_help = ("コマンドの結果をparseします。textfsmかgenieを指定します。")
 textfsm_template_help = ("--parser optionで textfsm を指定する際に template ファイルを渡すためのオプションです。\n"
                          "--parser optionで textfsm を指定する際は必須です。(genieのときは必要ありません。)")
-post_reconnect_baudrate_help = "実行後にこのボーレートで再接続確認だけ行うケロ🐸"
+# post_reconnect_baudrate_help = "実行後にこのボーレートで再接続確認だけ行うケロ🐸"
 connect_only_help = "コマンドを実行せず、接続確認だけ行うケロ🐸（enable まで）"
 
 
@@ -83,7 +83,7 @@ netmiko_console_parser.add_argument("-o", "--ordered", action="store_true", help
 netmiko_console_parser.add_argument("--parser", "--parse",dest="parser",  choices=["textfsm", "genie", "text-fsm"], help=parser_help)
 netmiko_console_parser.add_argument("--textfsm-template", type=str,  help=textfsm_template_help)
 netmiko_console_parser.add_argument("--force", action="store_true", help=force_help)
-netmiko_console_parser.add_argument("--post-reconnect-baudrate", type=int, help=post_reconnect_baudrate_help)
+# netmiko_console_parser.add_argument("--post-reconnect-baudrate", type=int, help=post_reconnect_baudrate_help)
 
 
 # mutually exclusive
@@ -121,38 +121,35 @@ def _execute_console_command(connection, prompt, command, *, args, parser_kind, 
 
 
 def _execute_console_commands_list(connection, prompt, exec_commands, *, args, parser_kind, expect_string: str | None):
-    # full_output_list = []
+    # :TODO commands_listの送信はsend_config_setを使うほうが安定するかも。
+    full_output_list = []
 
-    # # textfsmだけ先に一度だけ作る 
-    # if parser_kind == "textfsm":
-    #     template = str(Path(args.textfsm_template))
+    # textfsmだけ先に一度だけ作る 
+    if parser_kind == "textfsm":
+        template = str(Path(args.textfsm_template))
 
-    # for command in exec_commands:
-    #     if parser_kind:
-    #         if parser_kind == "genie":
-    #             output = connection.send_command(command, use_genie=True, raise_parsing_error=True, read_timeout=args.read_timeout, expect_string=expect_string)
-    #             full_output = output
-    #             full_output_list.append(full_output)
-    #         elif parser_kind == "textfsm":
-    #             output = connection.send_command(command, use_textfsm=True, raise_parsing_error=True,
-    #                                              textfsm_template=template, read_timeout=args.read_timeout, expect_string=expect_string)
-    #             full_output = output
-    #             full_output_list.append(full_output)
-    #     else:
-    #         output = connection.send_command(command, read_timeout=args.read_timeout, expect_string=None)
-    #         full_output = f"{prompt} {command}\n{output}\n"
-    #         full_output_list.append(full_output)
+    for command in exec_commands:
+        if parser_kind:
+            if parser_kind == "genie":
+                output = connection.send_command(command, use_genie=True, raise_parsing_error=True, read_timeout=args.read_timeout, expect_string=expect_string)
+                full_output = output
+                full_output_list.append(full_output)
+            elif parser_kind == "textfsm":
+                output = connection.send_command(command, use_textfsm=True, raise_parsing_error=True,
+                                                 textfsm_template=template, read_timeout=args.read_timeout, expect_string=expect_string)
+                full_output = output
+                full_output_list.append(full_output)
+        else:
+            output = connection.send_command(command, read_timeout=args.read_timeout, expect_string=expect_string)
+            full_output = f"{prompt} {command}\n{output}\n"
+            full_output_list.append(full_output)
     
-    # if parser_kind == "genie":
-    #     return full_output_list
-    # elif parser_kind == "textfsm":
-    #     return full_output_list
-    # else:
-    #     return "".join(full_output_list)
-    
-
-    return connection.send_config_set(exec_commands, read_timeout=args.read_timeout)
-
+    if parser_kind == "genie":
+        return full_output_list
+    elif parser_kind == "textfsm":
+        return full_output_list
+    else:
+        return "".join(full_output_list)
 
 
 def _execute_console_commands(connection, prompt, args, exec_commands, parser_kind: str | None = None, *, expect_string: str | None = None):
@@ -164,29 +161,29 @@ def _execute_console_commands(connection, prompt, args, exec_commands, parser_ki
         raise ValueError("command または commands_list のいずれかが必要ケロ🐸")
 
 
-def reconnect_with_baudrate(device: dict, hostname: str, new_baudrate: int, *, args) -> str | None:
-    """
-    指定のボーレートで再接続確認だけ行う。
-    成功: None を返す（失敗なし）
-    失敗: 失敗した hostname を返す（呼び出し側の集計で使える）
-    """
-    device_re = dict(device) # 再接続用にコピーを作成 元のdeviceに影響を与えない。
-    serial_settings = dict(device_re.get("serial_settings", {}))
-    serial_settings["baudrate"] = int(new_baudrate)
-    device_re["serial_settings"] = serial_settings
+# def reconnect_with_baudrate(device: dict, hostname: str, new_baudrate: int, *, args) -> str | None:
+#     """
+#     指定のボーレートで再接続確認だけ行う。
+#     成功: None を返す（失敗なし）
+#     失敗: 失敗した hostname を返す（呼び出し側の集計で使える）
+#     """
+#     device_re = dict(device) # 再接続用にコピーを作成 元のdeviceに影響を与えない。
+#     serial_settings = dict(device_re.get("serial_settings", {}))
+#     serial_settings["baudrate"] = int(new_baudrate)
+#     device_re["serial_settings"] = serial_settings
 
-    try:
-        reconnect_connection, reconnect_prompt, reconnect_hostname = connect_to_device_for_console(
-            device_re, hostname, require_enable=True
-        )
-        safe_disconnect(reconnect_connection)
-        if not getattr(args, "no_output", False):
-            print_success(f"<NODE: {reconnect_hostname}> 🔁{new_baudrate}bps で再接続確認OKケロ🐸")
-        return None
-    except Exception as e:
-        if not getattr(args, "no_output", False):
-            print_error(f"<NODE: {hostname}> 🔁再接続失敗ケロ🐸: {e}")
-        return hostname
+#     try:
+#         reconnect_connection, reconnect_prompt, reconnect_hostname = connect_to_device_for_console(
+#             device_re, hostname, require_enable=True
+#         )
+#         safe_disconnect(reconnect_connection)
+#         if not getattr(args, "no_output", False):
+#             print_success(f"<NODE: {reconnect_hostname}> 🔁{new_baudrate}bps で再接続確認OKケロ🐸")
+#         return None
+#     except Exception as e:
+#         if not getattr(args, "no_output", False):
+#             print_error(f"<NODE: {hostname}> 🔁再接続失敗ケロ🐸: {e}")
+#         return hostname
 
 
 def _handle_console_execution(device: dict, args, poutput, hostname: str, *, output_buffers: dict | None = None, parser_kind: str | None = None) -> str | None:
@@ -232,8 +229,10 @@ def _handle_console_execution(device: dict, args, poutput, hostname: str, *, out
     
     # ❸ 接続 (enableまで)
     connection = None 
+    require_enable = None
     try:
-        connection, prompt, hostname = connect_to_device_for_console(device, hostname, require_enable=True)
+        require_enable = not getattr(args, "connect_only", False) # connect-onlyならenable昇格しない
+        connection, prompt, hostname = connect_to_device_for_console(device, hostname, require_enable=require_enable)
     except ConnectionError as e:
         if not args.no_output:
             print_error(str(e))
@@ -276,10 +275,10 @@ def _handle_console_execution(device: dict, args, poutput, hostname: str, *, out
     # ❺ 安全に切断
     safe_disconnect(connection)
 
-    if getattr(args, "post_reconnect_baudrate", None):
-        failed = reconnect_with_baudrate(device, hostname, args.post_reconnect_baudrate, args=args)
-        if failed:
-            return failed
+    # if getattr(args, "post_reconnect_baudrate", None):
+    #     failed = reconnect_with_baudrate(device, hostname, args.post_reconnect_baudrate, args=args)
+    #     if failed:
+    #         return failed
 
     # ❻ parser option 使用時の json と ordered 用の処理
     # display_text = 生テキスト or json 文字列
@@ -343,9 +342,9 @@ def do_console(self, args):
         print_error("コマンド未指定ケロ🐸（-c か -L か --connect-only のいずれかが必要）")
         return
     
-    if args.connect_only and args.post_reconnect_baudrate:
-        print_error("--connect-only と --post-reconnect-baudrate は同時に使えないケロ🐸")
-        return
+    # if args.connect_only and args.post_reconnect_baudrate:
+    #     print_error("--connect-only と --post-reconnect-baudrate は同時に使えないケロ🐸")
+    #     return
 
     if args.ordered and not args.group:
         print_error("--ordered は --group 指定時のみ使用できるケロ🐸")
