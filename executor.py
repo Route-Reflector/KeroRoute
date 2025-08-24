@@ -1,12 +1,11 @@
-import argparse
 from time import perf_counter
 from pathlib import Path
 import json
 import cmd2
 from cmd2 import Cmd2ArgumentParser
+from rich_argparse import RawTextRichHelpFormatter
 from message import print_info, print_success, print_warning, print_error
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from rich_argparse import RawTextRichHelpFormatter
 
 from output_logging import save_log, save_json
 from build_device import _build_device_and_hostname
