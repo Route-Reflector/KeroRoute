@@ -26,7 +26,7 @@ def print_info(message: str, panel: bool = False):
         _console.print(Panel(content))
     else:
         _console.print(content)
-    _log.info(str(message)) # keroroute.logに同じ内容を出す。
+    _log.info(f"[INFO]: {str(message)}") # keroroute.logに同じ内容を出す。
 
 
 def print_success(message: str):
@@ -34,7 +34,7 @@ def print_success(message: str):
         _console.print(Panel(f"[bright_green]{_timestamp()} 💯[SUCCESS] {message}[/bright_green]"))
     else:
         _console.print(f"[bright_green]{_timestamp()} 💯[SUCCESS] {message}[/bright_green]")
-    _log.info(f"['SUCCESS']{str(message)}") # keroroute.logに同じ内容を出す。
+    _log.info(f"[SUCCESS]: {str(message)}") # keroroute.logに同じ内容を出す。
 
 
 def print_warning(message: str):
@@ -42,7 +42,7 @@ def print_warning(message: str):
         _console.print(Panel(f"[bright_yellow]{_timestamp()} 🚧[WARNING] {message}[/bright_yellow]"))
     else:
         _console.print(f"[bright_yellow]{_timestamp()} 🚧[WARNING] {message}[/bright_yellow]")
-    _log.warning(str(message)) # keroroute.logに同じ内容を出す。
+    _log.warning(f"[WARNING]: {str(message)}") # keroroute.logに同じ内容を出す。
 
 
 def print_error(message: str):
@@ -50,7 +50,7 @@ def print_error(message: str):
         _console.print(Panel(f"[bright_red]{_timestamp()} 🚨[ERROR] {message}[/bright_red]"))
     else:
         _console.print(f"[bright_red]{_timestamp()} 🚨[ERROR] {message}[/bright_red]")
-    _log.error(str(message)) # keroroute.logに同じ内容を出す。
+    _log.error(f"[ERROR]: {str(message)}") # keroroute.logに同じ内容を出す。
 
 
 def ask(message: str) -> str:
