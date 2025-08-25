@@ -5,7 +5,7 @@ from pathlib import Path
 
 _LOGGER_NAME = "kero"
 
-def init_logging(log_dir: str | Path = "logs", level: str = "INFO", filename: str = "keroroute.log",
+def init_logging(log_dir: str | Path = "logs/keroroute", level: str = "INFO", filename: str = "keroroute.log",
     max_bytes: int = 5 * 1024 * 1024, backup_count: int = 3) -> logging.Logger:
     """ファイルにだけ出す最小ロガー。何度呼んでも安全（多重初期化しない）。"""
     logger = logging.getLogger(_LOGGER_NAME)
