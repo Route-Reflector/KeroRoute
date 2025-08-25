@@ -12,14 +12,11 @@ import login
 
 from message import print_info
 from load_and_validate_yaml import load_sys_config
+from kero_logging import init_logging
 """
 cmd2のコマンドライン引数はすべて文字列型となるため、注意が必要。
 たとえば、Trueと入力しても実際には"True"となるため型変換が必要。
 """
-
-_sys_config_cache = None  # 一度だけ読み込むようにキャッシュ
-
-_sys_config_cache = load_sys_config()
 
 startup_message = [
     "🐸 KeroRoute - A Network Automation Tool for the Rest of Us.",
@@ -48,7 +45,7 @@ class KeroRoute(cmd2.Cmd):
     prompt = "🐸\033[38;5;190mKeroRoute> \033[0m"
 
     def initial_message(self):
-        with open("kero-data/kero-logo.txt", "r") as logo_data:
+        with open("kero-data/kero-logo.txt", "r", encoding="utf-8") as logo_data:
             logo = logo_data.read()
         self.poutput(logo)
 
@@ -70,6 +67,12 @@ KeroRoute.do_login = login.do_login
 
 
 if __name__ == "__main__":
+    _sys_config_cache = load_sys_config()
+
+    logging_config = _sys_config_cache.get("logging", {})
+    init_logging(log_dir=logging_config.get("logging_directory", "logs/keroroute"),
+                 level=logging_config.get("logging_level", "INFO"),
+                 filename=logging_config.get("filename", "keroroute.log")) 
     cli = KeroRoute(suggest_similar_command=True)
     cli.initial_message()
     cli.cmdloop()

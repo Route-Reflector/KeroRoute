@@ -7,6 +7,11 @@ system:
   system_config_directory: "" # main.pyと同一フォルダの場合は""
   system_config_filename: "system_config.yaml"
 
+logging: # main.pyで使用中。
+  logging_directory: "logs/keroroute"
+  logging_level: "INFO"
+  filename: "keroroute.log"
+
 user_interface:
   message_style: plain # plain or panel
 

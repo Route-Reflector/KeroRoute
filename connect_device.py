@@ -3,12 +3,15 @@ from netmiko import ConnectHandler
 from netmiko.base_connection import BaseConnection 
 from netmiko.exceptions import NetMikoTimeoutException, NetMikoAuthenticationException
 from prompt_utils import get_prompt, ensure_enable_mode, EnableModeError
-
+from kero_logging import get_logger
 # connect_device.py
 # 役割:
 # - Netmiko接続の確立（connect_to_device）
 # - 失敗/例外時の安全な切断（safe_disconnect）
 # このモジュールは「接続ライフサイクル（open/close）」を司る。
+
+_log = get_logger()
+
 
 def safe_disconnect(connection: BaseConnection | None) -> None:
     """クリーンアップ中の例外で元例外を潰さないために安全に切断する"""
@@ -73,6 +76,7 @@ def connect_to_device(device: dict, hostname:str, require_enable: bool = True) -
             try:
                 ensure_enable_mode(connection)
             except EnableModeError as e:
+                _log.exception(f"[ERROR]: [{hostname}] Enableモード移行に失敗")
                 safe_disconnect(connection)
                 raise ConnectionError(f"[{hostname}] Enableモードに移行できなかったケロ🐸 Secretが間違ってないケロ？ {e}") from e
         
@@ -83,14 +87,17 @@ def connect_to_device(device: dict, hostname:str, require_enable: bool = True) -
         return connection, prompt, hostname
 
     except NetMikoTimeoutException as e:
+        _log.exception(f"[ERROR]: [{hostname}] 接続タイムアウト")
         safe_disconnect(connection)
         raise ConnectionError(f"[{hostname}] タイムアウトしたケロ🐸 接続先がオフラインかも") from e
     
     except NetMikoAuthenticationException as e:
+        _log.exception(f"[ERROR]: [{hostname}] 認証失敗")
         safe_disconnect(connection)
         raise ConnectionError(f"[{hostname}] 認証に失敗したケロ🐸 ユーザー名とパスワードを確認してケロ") from e
 
     except Exception as e:
+        _log.exception(f"[ERROR]: [{hostname}] 予期しない例外 (connect_to_device)")
         # ConnectHandler失敗直後など、connectionが無い可能性がある
         safe_disconnect(connection)
         raise ConnectionError(f"[{hostname}]に接続できないケロ。🐸 詳細: \n {e}") from e
@@ -124,6 +131,7 @@ def connect_to_device_for_console(device: dict, hostname: str, require_enable: b
             try:
                 ensure_enable_mode(connection)
             except EnableModeError as e:
+                _log.exception(f"[ERROR]: [{hostname}] Enableモード移行に失敗 (console)")
                 safe_disconnect(connection)
                 raise ConnectionError(f"[{hostname}] Enableモードに移行できなかったケロ🐸 Secretが間違ってないケロ？ {e}") from e
 
@@ -134,14 +142,17 @@ def connect_to_device_for_console(device: dict, hostname: str, require_enable: b
         return connection, prompt, hostname
     
     except NetMikoTimeoutException as e:
+        _log.exception(f"[ERROR]: [{hostname}] 接続タイムアウト (console)")
         safe_disconnect(connection)
         raise ConnectionError(f"[{hostname}] タイムアウトしたケロ🐸 接続先がオフラインかも") from e
     
     except NetMikoAuthenticationException as e:
+        _log.exception(f"[ERROR]: [{hostname}] 認証失敗 (console)")
         safe_disconnect(connection)
         raise ConnectionError(f"[{hostname}] 認証に失敗したケロ🐸 ユーザー名とパスワードを確認してケロ") from e
 
     except Exception as e:
         # ConnectHandler失敗直後など、connectionが無い可能性がある
+        _log.exception(f"[ERROR]: [{hostname}] 予期しない例外 (connect_to_device_for_console)")
         safe_disconnect(connection)
         raise ConnectionError(f"[{hostname}]に接続できないケロ。🐸 詳細: \n {e}") from e
