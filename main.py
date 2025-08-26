@@ -13,6 +13,7 @@ import login
 from message import print_info
 from load_and_validate_yaml import load_sys_config
 from kero_logging import init_logging
+
 """
 cmd2のコマンドライン引数はすべて文字列型となるため、注意が必要。
 たとえば、Trueと入力しても実際には"True"となるため型変換が必要。
