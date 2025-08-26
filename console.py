@@ -75,7 +75,7 @@ netmiko_console_parser.add_argument("-b", "--baudrate", type=int, default=None, 
 netmiko_console_parser.add_argument("-u", "--username", type=str, default="", help=username_help)
 netmiko_console_parser.add_argument("-p", "--password", type=str, default="", help=password_help)
 netmiko_console_parser.add_argument("-d", "--device_type", type=str, default="", help=device_type_help, completer=device_types_completer)
-netmiko_console_parser.add_argument("-r", "--read_timeout", type=int, default=60, help=read_timeout_help)
+netmiko_console_parser.add_argument("-r", "--read_timeout", "--read-timeout", dest="read_timeout", type=int, default=60, help=read_timeout_help)
 netmiko_console_parser.add_argument("-l", "--log", action="store_true", help=log_help)
 netmiko_console_parser.add_argument("-m", "--memo", type=str, default="", help=memo_help)
 netmiko_console_parser.add_argument("-S", "--secret", type=str, default="", help=secret_help)

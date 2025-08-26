@@ -11,7 +11,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from connect_device import connect_to_device, safe_disconnect
 from workers import default_workers
 from completers import host_names_completer, group_names_completer, config_list_names_completer, device_types_completer
-
+from capability_guard import guard_configure, CapabilityError
 
 ######################
 ###  HELP_SECTION  ### 
@@ -212,6 +212,13 @@ def do_configure(self, args):
     - 接続|enable 失敗、設定投入失敗は `_handle_configure()` 内で捕捉・表示
     - グループ実行時は失敗ノードを集計して最後に要約表示する🐸
     """
+    # Capabilityチェック
+    try:
+        guard_configure(args)  # ← 不許可オプションがあればここで止める
+    except CapabilityError as e:
+        print_error(str(e))
+        return
+
 
     if args.ip:
         device, hostname = _build_device_and_hostname(args)

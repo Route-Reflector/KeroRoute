@@ -13,6 +13,7 @@ from load_and_validate_yaml import get_validated_commands_list, get_validated_in
 from connect_device import connect_to_device, safe_disconnect
 from workers import default_workers
 from completers import host_names_completer, group_names_completer, device_types_completer, commands_list_names_completer
+from capability_guard import guard_execute, CapabilityError
 
 
 ######################
@@ -353,6 +354,13 @@ def do_execute(self, args):
     - `cmd2` では ``self.poutput`` が標準出力をラップしているため、
       すべての内部関数にこれを渡してカラー表示や装飾を統一している。
     """
+    # Capabilityチェック
+    try:
+        guard_execute(args)
+    except CapabilityError as e:
+        print_error(str(e))
+        return
+
     if args.ordered and not args.group:
         print_error("--ordered は --group 指定時のみ使用できるケロ🐸")
         return
