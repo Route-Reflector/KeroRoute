@@ -359,6 +359,7 @@ def do_execute(self, args):
         guard_execute(args)
     except CapabilityError as e:
         print_error(str(e))
+        return
 
     if args.ordered and not args.group:
         print_error("--ordered は --group 指定時のみ使用できるケロ🐸")
