@@ -1,5 +1,8 @@
 import argparse
 import cmd2
+from cmd2 import Cmd2ArgumentParser
+from rich_argparse import RawTextRichHelpFormatter
+
 import sys
 from netmiko import SCPConn
 from pathlib import Path
@@ -7,7 +10,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from message import print_info, print_success, print_error
 from load_and_validate_yaml import get_validated_inventory_data
-from build_device import _build_device_and_hostname
+from build_device import build_device_and_hostname
 
 from output_logging import save_log
 from connect_device import connect_to_device, safe_disconnect
@@ -51,7 +54,8 @@ dest_help = ("転送先のパスを指定します。")
 ######################
 ### PARSER_SECTION ###
 ######################
-netmiko_scp_parser = argparse.ArgumentParser(formatter_class=argparse.RawTextHelpFormatter)
+netmiko_scp_parser = Cmd2ArgumentParser(formatter_class=RawTextRichHelpFormatter,
+                                            description="[green]execute コマンド🐸[/green]")
 # "-h" はhelpと競合するから使えない。
 netmiko_scp_parser.add_argument("-u", "--username", type=str, default="", help=username_help)
 netmiko_scp_parser.add_argument("-p", "--password", type=str, default="", help=password_help)
@@ -158,7 +162,7 @@ def do_scp(self, args):
     """
 
     if args.ip:
-        device, hostname = _build_device_and_hostname(args)
+        device, hostname = build_device_and_hostname(args)
         _handle_scp(device, args, self.poutput, hostname)
         return
 
@@ -172,12 +176,12 @@ def do_scp(self, args):
         
     
     if args.host:
-        device, hostname = _build_device_and_hostname(args, inventory_data)
+        device, hostname = build_device_and_hostname(args, inventory_data)
         _handle_scp(device, args, self.poutput, hostname)
         return
 
     elif args.group:
-        device_list, hostname_list = _build_device_and_hostname(args, inventory_data)
+        device_list, hostname_list = build_device_and_hostname(args, inventory_data)
 
         max_workers = default_workers(len(device_list), args)
 

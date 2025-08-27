@@ -1,28 +1,48 @@
 from ruamel.yaml import YAML
+from ruamel.yaml.error import YAMLError, MarkedYAMLError 
 from pathlib import Path
+
 
 #####################
 ### CONST_SECTION ###
 #####################
-SYS_CONFIG_FILE = ""
-INVENTORY_YAML_FILE = ""
+SYS_CONFIG_FILE = "sys_config.yaml"
+INVENTORY_YAML_FILE = "inventory.yaml"
 COMMANDS_LISTS_FILE = "commands-lists.yaml"
 CONFIG_LISTS_FILE = "config-lists.yaml"
 
-yaml = YAML()
+
+def _load_yaml_file_safe(file_path: Path, file_label: str) -> dict:
+    _yaml = YAML(typ="safe")
+    try:
+        with open(file_path, "r", encoding="utf-8") as f:
+            data = _yaml.load(f)
+    except MarkedYAMLError as e:
+        mark = getattr(e, "problem_mark", None) or getattr(e, "context_mark", None)
+        loc = f" (line {mark.line+1}, column {mark.column+1})" if mark else ""
+        problem = getattr(e, "problem", None) or getattr(e, "context", None) or str(e)
+        raise ValueError(f"{file_label} のYAML構文エラーだケロ🐸{loc}\n{problem}") from e
+    except YAMLError as e:  # その他のYAMLエラー
+        raise ValueError(f"{file_label} のYAML読込エラーだケロ🐸\n{e}") from e
+    
+    if data is None:
+        raise ValueError(f"{file_label} が空だケロ🐸")
+    if not isinstance(data, dict):
+        raise ValueError(f"{file_label} のトップレベルはマップじゃないケロ🐸")
+
+    return data
+
 
 def load_sys_config():
     """
     sys_config.yaml を 読み込んで dict を返す。
     キャッシュはしない(呼び出し側で保持する。)
     """
-    config_path = Path("sys_config.yaml")
+    config_path = Path(SYS_CONFIG_FILE)
     if not config_path.exists():
-        raise FileNotFoundError("sys_config.yaml が見つからないケロ🐸")
-
-    with open(config_path, "r", encoding="utf-8") as f:
-        sys_config_data = yaml.load(f)
-
+        raise FileNotFoundError(f"'{SYS_CONFIG_FILE}' が見つからないケロ🐸")
+    
+    sys_config_data = _load_yaml_file_safe(config_path, SYS_CONFIG_FILE)
     return sys_config_data
 
 
@@ -49,22 +69,26 @@ def get_validated_inventory_data(host: str = None, group: str =None) -> dict:
     ValueError
         指定された host または group が inventory.yaml に存在しない場合。
     """
-    # Errorはraiseするが表示はexecuterやconfigure側で対応。
-
-    inventory_path = Path("inventory.yaml")
+    inventory_path = Path(INVENTORY_YAML_FILE)
     if not inventory_path.exists():
-        raise FileNotFoundError("inventory.yamlが存在しないケロ🐸")
+        raise FileNotFoundError(f"'{INVENTORY_YAML_FILE}' が存在しないケロ🐸")
 
-    with open(inventory_path, "r", encoding="utf-8") as inventory:
-        inventory_data = yaml.load(inventory)
+    inventory_data = _load_yaml_file_safe(inventory_path, INVENTORY_YAML_FILE)
 
-    if host and host not in inventory_data["all"]["hosts"]:
-            msg = f"ホスト '{host}' はinventory.yamlに存在しないケロ🐸"
-            raise ValueError(msg)
+    all_node = inventory_data.get("all")
+    if not isinstance(all_node, dict):
+        raise ValueError("inventory.yamlの 'all' が無いか形式が不正ケロ🐸")
 
-    elif group and group not in inventory_data["all"]["groups"]:
-            msg = f"グループ '{group}' はinventory.yamlに存在しないケロ🐸"
-            raise ValueError(msg)
+    hosts = all_node.get("hosts", {})
+    groups = all_node.get("groups", {})
+    if not isinstance(hosts, dict) or not isinstance(groups, dict):
+        raise ValueError("inventory.yaml の 'all.hosts' または 'all.groups' の形式が不正ケロ🐸")
+
+    if host and host not in hosts:
+        raise ValueError(f"ホスト '{host}' はinventory.yamlに存在しないケロ🐸")
+
+    elif group and group not in groups:
+        raise ValueError(f"グループ '{group}' はinventory.yamlに存在しないケロ🐸")
     
     return inventory_data
 
@@ -102,35 +126,50 @@ def get_validated_commands_list(args) -> list[str]:
     # ✅ ファイル存在チェック
     commands_lists_path = Path(COMMANDS_LISTS_FILE)
     if not commands_lists_path.exists():
-        raise FileNotFoundError(f"{COMMANDS_LISTS_FILE}が見つからないケロ🐸")
+        raise FileNotFoundError(f"'{COMMANDS_LISTS_FILE}' が見つからないケロ🐸")
 
     # ✅ YAML読み込み
-    with open(commands_lists_path, "r", encoding="utf-8") as f:
-        commands_lists_data = yaml.load(f)
+    commands_lists_data = _load_yaml_file_safe(commands_lists_path, COMMANDS_LISTS_FILE)
 
-    # ✅ ルートキー検証
     if "commands_lists" not in commands_lists_data:
-        raise ValueError(f"commands_lists は {COMMANDS_LISTS_FILE} に存在しないケロ🐸")
+        raise ValueError(f"commands_lists は '{COMMANDS_LISTS_FILE}' に存在しないケロ🐸")
 
-    if  not isinstance(commands_lists_data["commands_lists"], dict):
-        raise ValueError(f"{COMMANDS_LISTS_FILE} の形式が不正ケロ🐸")
+    # ルートキー検証
+    commands_lists_root = commands_lists_data.get("commands_lists")
+
+    if  not isinstance(commands_lists_root, dict):
+        raise ValueError(f"'{COMMANDS_LISTS_FILE}' の形式が不正ケロ🐸")
 
     commands_list_name = args.commands_list
-    commands_lists_dict = commands_lists_data["commands_lists"]
+    commands_list_definition = commands_lists_root.get(commands_list_name)
 
     # ✅ リスト名の存在チェック（フラット構造：トップレベルのキーが list_name）
-    if commands_list_name not in commands_lists_dict:
-        raise ValueError(f"コマンドリスト: '{commands_list_name}'は{COMMANDS_LISTS_FILE}に存在しないケロ🐸")
+    if commands_list_name not in commands_lists_root:
+        raise ValueError(f"コマンドリスト: '{commands_list_name}' は '{COMMANDS_LISTS_FILE}' に存在しないケロ🐸")
+    
+    if not isinstance(commands_list_definition, dict):
+        raise ValueError(f"コマンドリスト: '{commands_list_name}' の 内容の形式が不正ケロ🐸")
 
-    exec_commands = commands_lists_dict[commands_list_name].get("commands_list")
+    execution_commands = commands_list_definition.get("commands_list")
 
-    if not exec_commands:
-        raise ValueError(f"コマンドリスト: '{commands_list_name}'の'commands_list'が空ケロ🐸")
+    if not execution_commands:
+        raise ValueError(f"コマンドリスト: '{commands_list_name}' の 'commands_list' が空ケロ🐸")
 
-    if not isinstance(exec_commands, list):
-        raise ValueError(f"コマンドリスト: '{commands_list_name}'の'commands_list'の形式が不正ケロ🐸")
+    if not isinstance(execution_commands, list):
+        raise ValueError(f"コマンドリスト: '{commands_list_name}' の 'commands_list' の形式が不正ケロ🐸")
+    
+    # 文字列か検証
+    for ec in execution_commands:
+        if not isinstance(ec, str):
+            raise ValueError(f"コマンドリスト: '{commands_list_name}' の 'commands_list' に文字列以外が混入してるケロ🐸")
 
-    return exec_commands
+    # 前後空白除去 and 空行除去
+    execution_commands = [command.strip() for command in execution_commands if command.strip()]
+
+    if not execution_commands:
+        raise ValueError(f"コマンドリスト: '{commands_list_name}' の 'commands_list' が空（空行/空白のみ）ケロ🐸")
+
+    return execution_commands
 
 
 def get_validated_config_list(args) -> list[str]:
@@ -171,33 +210,45 @@ def get_validated_config_list(args) -> list[str]:
     if not config_lists_path.exists():
         raise FileNotFoundError(f"'{CONFIG_LISTS_FILE}' が見つからないケロ🐸")
 
-    with open(config_lists_path, "r", encoding="utf-8") as f:
-        config_lists_data = yaml.load(f)
-
+    config_lists_data = _load_yaml_file_safe(config_lists_path, CONFIG_LISTS_FILE)
     if "config_lists" not in config_lists_data:
         raise ValueError(f"config_lists は {CONFIG_LISTS_FILE} に存在しないケロ🐸")
-
-    if not isinstance(config_lists_data["config_lists"], dict):
-        raise ValueError(f"{CONFIG_LISTS_FILE} の形式が不正ケロ🐸")
-
     
-    config_lists =  config_lists_data["config_lists"]
-    config_list_name = args.config_list
+    config_lists_root =  config_lists_data.get("config_lists")
 
-    if config_list_name not in config_lists:
+    if not isinstance(config_lists_root, dict):
+        raise ValueError(f"{CONFIG_LISTS_FILE} の形式が不正ケロ🐸")
+    
+    config_list_name = args.config_list
+    
+    if config_list_name not in config_lists_root:
         raise ValueError(f"コンフィグリスト '{config_list_name}' は '{CONFIG_LISTS_FILE}' に存在しないケロ🐸")
     
-    exec_commands = config_lists.get(config_list_name).get("config_list")
+    config_list_definition = config_lists_root.get(config_list_name)
+
+    configure_commands = config_list_definition.get("config_list")
     
-    if not exec_commands:
+    if not configure_commands:
         raise ValueError(f"コンフィグリスト: '{config_list_name}' の 'config_list' が空ケロ🐸")
-    if not isinstance(exec_commands, list):
+    if not isinstance(configure_commands, list):
         raise ValueError(f"コンフィグリスト: '{config_list_name}' の 'config_list' は文字列のリストじゃないケロ🐸")
 
-    return exec_commands
+    # 文字列か検証
+    for cc in configure_commands:
+        if not isinstance(cc, str):
+            raise ValueError(f"コンフィグリスト: '{config_list_name}' の 'config_list' に文字列以外が混入してるケロ🐸")
+
+    # 前後空白除去 and 空行除去
+    configure_commands = [command.strip() for command in configure_commands if command.strip()]
+
+    if not configure_commands:
+        raise ValueError(f"コンフィグリスト: '{config_list_name}' の 'config_list' が空（空行/空白のみ）ケロ🐸")
+
+    return configure_commands
 
 
-def validate_device_type_for_list(hostname: str, node_device_type: str | None, list_name:str, list_device_type: str | None) -> bool:
+def validate_device_type_for_list(hostname: str, node_device_type: str | None,
+                                  list_name:str, list_device_type: str | None) -> bool:
     """
     対象ホストの device_type とリスト側の device_type が一致するか検証する。
     - ここではメッセージ表示は行わず、ValueError を投げるだけ。
@@ -234,16 +285,29 @@ def get_commands_list_device_type(list_name: str) -> str | None:
         raise FileNotFoundError(f"{COMMANDS_LISTS_FILE}が見つからないケロ🐸")
 
     # ✅ YAML読み込み
-    with open(commands_lists_path, "r", encoding="utf-8") as f:
-        commands_lists_data = yaml.load(f)
-
-    # ✅ ルートキー検証
+    commands_lists_data = _load_yaml_file_safe(commands_lists_path, COMMANDS_LISTS_FILE)
+    
     if "commands_lists" not in commands_lists_data:
         raise ValueError(f"commands_lists は {COMMANDS_LISTS_FILE} に存在しないケロ🐸")
 
-    if  not isinstance(commands_lists_data["commands_lists"], dict):
-        raise ValueError(f"{COMMANDS_LISTS_FILE} の形式が不正ケロ🐸")
-
+    commands_lists_root = commands_lists_data.get("commands_lists")
     
-    commands_lists_device_type = commands_lists_data.get("commands_lists", {}).get(list_name, {}).get("device_type")
+    if not isinstance(commands_lists_root, dict):
+        raise ValueError(f"{COMMANDS_LISTS_FILE} の形式が不正ケロ🐸")
+    
+    commands_list_definition = commands_lists_root.get(list_name)
+
+    if not isinstance(commands_list_definition, dict):
+        return None
+        
+    commands_lists_device_type = commands_list_definition.get("device_type")
+    
+    if not isinstance(commands_lists_device_type, str):
+        return None
+    
+    commands_lists_device_type = commands_lists_device_type.strip()
+
+    if not commands_lists_device_type:
+        return None
+    
     return commands_lists_device_type 

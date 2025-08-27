@@ -1,19 +1,17 @@
-from time import perf_counter
 from pathlib import Path
-import json
+import threading
 import cmd2
 from cmd2 import Cmd2ArgumentParser
 from rich_argparse import RawTextRichHelpFormatter
-from message import print_info, print_success, print_warning, print_error
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-from output_logging import save_log, save_json
-from build_device import _build_device_and_hostname
-from load_and_validate_yaml import get_validated_commands_list, get_validated_inventory_data, validate_device_type_for_list, get_commands_list_device_type
-from connect_device import connect_to_device, safe_disconnect
+from message import print_info, print_success, print_warning, print_error
+from build_device import build_device_and_hostname
+from load_and_validate_yaml import get_validated_inventory_data
 from workers import default_workers
 from completers import host_names_completer, group_names_completer, device_types_completer, commands_list_names_completer
 from capability_guard import guard_execute, CapabilityError
+from netmiko_execution import handle_execution
 
 
 ######################
@@ -49,23 +47,26 @@ workers_help = ("並列実行するワーカースレッド数を指定します
 secret_help = ("enable に入るための secret を指定します。(省略時は password を流用します。)\n"
                "--ip 専用。--host | --group 指定時は [green]inventory.yaml[/green] の値を使用します。\n\n")
 quiet_help = ("画面上の出力（nodeのcommandの結果）を抑制します。進捗・エラーは表示されます。このオプションを使う場合は --log が必須です。")
-no_output_help = ("画面上の出力を完全に抑制します（進捗・エラーも表示しません）。 --log が未指定の場合は実行を中止します。")
+no_output_help = ("画面上の出力を完全に抑制します（進捗・エラーも表示しません）。 --log が未指定の場合のみエラー表示します。")
 ordered_help = ("--group指定時にoutputの順番を昇順に並べ変えます。 このoptionを使用しない場合は実行完了順に表示されます。--group 未指定の場合は実行を中止します。")
 parser_help = ("コマンドの結果をparseします。textfsmかgenieを指定します。")
 textfsm_template_help = ("--parser optionで textfsm を指定する際に template ファイルを渡すためのオプションです。\n"
                          "--parser optionで textfsm を指定する際は必須です。(genieのときは必要ありません。)")
 force_help = "device_type の不一致や未設定エラーを無視して強制実行するケロ🐸"
+via_help = ("executeコマンドを実行するprotocolを指定します。\n"
+            "[ssh telnet console restconf]から1つ選択します。指定しない場合はsshになります。🐸")
 
 
 ######################
 ### PARSER_SECTION ###
-######################:w
-# netmiko_execute_parser = argparse.ArgumentParser(formatter_class=argparse.RawTextHelpFormatter)
-netmiko_execute_parser = Cmd2ArgumentParser(formatter_class=RawTextRichHelpFormatter, description="[green]execute コマンド🐸[/green]")
+######################
+netmiko_execute_parser = Cmd2ArgumentParser(formatter_class=RawTextRichHelpFormatter,
+                                            description="[green]execute コマンド🐸[/green]")
 # "-h" はhelpと競合するから使えない。
 netmiko_execute_parser.add_argument("-u", "--username", type=str, default="", help=username_help)
 netmiko_execute_parser.add_argument("-p", "--password", type=str, default="", help=password_help)
-netmiko_execute_parser.add_argument("-d", "--device_type", type=str, default="cisco_ios", help=device_type_help, completer=device_types_completer)
+netmiko_execute_parser.add_argument("-d", "--device_type", type=str, default="cisco_ios", help=device_type_help,
+                                    completer=device_types_completer)
 netmiko_execute_parser.add_argument("-P", "--port", type=int, default=22, help=port_help)
 netmiko_execute_parser.add_argument("-t", "--timeout", type=int, default=10, help=timeout_help)
 netmiko_execute_parser.add_argument("-l", "--log", action="store_true", help=log_help)
@@ -73,9 +74,12 @@ netmiko_execute_parser.add_argument("-m", "--memo", type=str, default="", help=m
 netmiko_execute_parser.add_argument("-w", "--workers", type=int, default=None, metavar="N", help=workers_help)
 netmiko_execute_parser.add_argument("-s", "--secret", type=str, default="", help=secret_help)
 netmiko_execute_parser.add_argument("-o", "--ordered", action="store_true", help=ordered_help)
-netmiko_execute_parser.add_argument("--parser", "--parse",dest="parser",  choices=["textfsm", "genie", "text-fsm"], help=parser_help)
+netmiko_execute_parser.add_argument("--parser", "--parse", dest="parser", 
+                                    choices=["textfsm", "genie", "text-fsm"], help=parser_help)
 netmiko_execute_parser.add_argument("--textfsm-template", type=str,  help=textfsm_template_help)
 netmiko_execute_parser.add_argument("--force", action="store_true", help=force_help)
+netmiko_execute_parser.add_argument("--via", "-v", "--by", "-V",  dest="via", 
+                                    choices=["ssh", "telnet", "console", "restconf"], default="ssh", help=via_help)
 
 
 # mutually exclusive
@@ -86,255 +90,12 @@ target_node.add_argument("--group", type=str, nargs="?", default=None, help=grou
 
 target_command = netmiko_execute_parser.add_mutually_exclusive_group(required=True)
 target_command.add_argument("-c", "--command", type=str, default="", help=command_help)
-target_command.add_argument("-L", "--commands-list", type=str, default="", help=command_list_help, completer=commands_list_names_completer)
+target_command.add_argument("-L", "--commands-list", type=str, default="",
+                            help=command_list_help, completer=commands_list_names_completer)
 
 silence_group = netmiko_execute_parser.add_mutually_exclusive_group(required=False)
 silence_group.add_argument("--quiet", action="store_true", help=quiet_help)
 silence_group.add_argument("--no-output", action="store_true", help=no_output_help)
-
-
-def _execute_command(connection, prompt, command, args, parser_kind):
-    """
-    単一コマンドを Netmiko で実行し、プロンプト＋コマンド＋出力を 1 つの文字列に整形して返す。
-
-    Parameters
-    ----------
-    connection : BaseConnection
-        `connect_to_device()` で取得した Netmiko 接続（特権モード|base_prompt確定済み）。
-    prompt : str
-        呼び出し元で取得済みの固定プロンプト文字列（例: "R1#"). 再取得は行わない。
-    command : str
-        実行するコマンド。
-    args : argparse.Namespace
-        実行オプション（parser_kind 等を含む）。
-    parser_kind : str | None
-        "genie" / "textfsm" のときは構造化データを返す。None のときはテキストを返す。
-
-    Returns
-    -------
-    str | list | dict
-        parser_kind=None のときは "{prompt} {command}\\n{device_output}\\n" 形式のテキスト。
-        parser_kind が指定されている場合は構造化データ（list/dict）。
-    """
-    if parser_kind:
-        if parser_kind == "genie":
-            output = connection.send_command(command, use_genie=True, raise_parsing_error=True)
-            full_output = output
-        elif parser_kind == "textfsm":
-            template = str(Path(args.textfsm_template))
-            output = connection.send_command(command, use_textfsm=True, raise_parsing_error=True,
-                                             textfsm_template=template)
-            full_output = output
-    else:
-        output = connection.send_command(command)
-        full_output = f"{prompt} {command}\n{output}\n"
-
-    return full_output
-
-
-def _execute_commands_list(connection, prompt, exec_commands, args, parser_kind):
-    """
-    commands-lists.yaml で定義されたコマンド列を順次実行し、結果を連結して返す。
-
-    Parameters
-    ----------
-    connection : BaseConnection
-        `connect_to_device()` で取得した Netmiko 接続（特権モード／base_prompt確定済み）。
-    prompt : str
-        呼び出し元で取得済みの固定プロンプト文字列（例: "R1#"). 再取得は行わない。
-    exec_commands : list[str]
-        `get_validated_commands_list()` で取得したコマンドのリスト。
-    args : argparse.Namespace
-        実行オプション（parser_kind 等を含む）。
-    parser_kind : str | None
-        "genie" / "textfsm" のときは各コマンドの構造化データ（list）を返す。None のときはテキスト連結。
-
-    Returns
-    -------
-    str | list
-        parser_kind=None のときは各要素 "{prompt} {command}\\n{output}\\n" を連結したテキスト。
-        parser_kind が指定されている場合は各コマンド結果の配列（list）。
-    """
-    full_output_list = []
-
-    # textfsmだけ先に一度だけ作る 
-    if parser_kind == "textfsm":
-        template = str(Path(args.textfsm_template))
-
-    for command in exec_commands:
-        if parser_kind:
-            if parser_kind == "genie":
-                output = connection.send_command(command, use_genie=True, raise_parsing_error=True)
-                full_output = output
-                full_output_list.append(full_output)
-            elif parser_kind == "textfsm":
-                output = connection.send_command(command, use_textfsm=True, raise_parsing_error=True,
-                                                 textfsm_template=template)
-                full_output = output
-                full_output_list.append(full_output)
-        else:
-            output = connection.send_command(command)
-            full_output = f"{prompt} {command}\n{output}\n"
-            full_output_list.append(full_output)
-    
-    if parser_kind == "genie":
-        return full_output_list
-    elif parser_kind == "textfsm":
-        return full_output_list
-    else:
-        return "".join(full_output_list)
-
-
-def _execute_commands(connection, prompt, args, exec_commands, parser_kind: str | None = None):
-    """
-    単発コマンド（--command）またはコマンドリスト（--commands-list）を実行し、結果を返すラッパー関数。
-
-    Parameters
-    ----------
-    connection : BaseConnection
-        `connect_to_device()` で取得した Netmiko 接続。
-    prompt : str
-        デバイスのプロンプト（例: "R1#").
-    args : argparse.Namespace
-        引数オブジェクト（args.command または args.commands_list を持つ）。
-    exec_commands : list[str] | None
-        コマンドリスト実行時に使用するコマンド配列。単発コマンド時は None。
-
-    Returns
-    -------
-    str
-        実行結果テキスト。
-
-    Raises
-    ------
-    ValueError
-        args.command と args.commands_list のいずれも指定されていない場合。
-    """
-    if args.command:
-        return _execute_command(connection, prompt, args.command, args=args, parser_kind=parser_kind)
-    elif args.commands_list:
-        return _execute_commands_list(connection, prompt, exec_commands, args=args, parser_kind=parser_kind)
-    else:
-        raise ValueError("command または commands_list のいずれかが必要ケロ🐸")
-
-
-def _handle_execution(device: dict, args, poutput, hostname, *, output_buffers: dict | None = None, parser_kind: str | None = None) -> str | None:
-    """
-    デバイス接続〜コマンド実行〜ログ保存までをまとめて処理するラッパー関数。
-
-    Args:
-        device (dict): 接続情報を含むデバイス辞書
-        args: コマンドライン引数
-        poutput: cmd2 の出力関数
-        hostname (str): ログファイル名などに使うホスト識別子
-    
-    Returns:
-        成功時 None
-        失敗時 hostname (str)
-    """
-    timer = perf_counter() # ⌚ start
-    # ✅ 1. commands-list の存在チェック（必要なら）
-    result_output_string = ""
-    exec_commands = None # args.commandのとき未定義になるため必要。
-
-    try:
-        if args.commands_list:
-            exec_commands = get_validated_commands_list(args)
-    except (FileNotFoundError, ValueError) as e:
-        if not args.no_output:
-            print_error(str(e))
-            elapsed = perf_counter() - timer
-            print_warning(f"<NODE: {hostname}> ❌中断ケロ🐸 (elapsed: {elapsed:.2f}s)")
-        return hostname # 失敗時
-    
-    # ✅ 2. device_type ミスマッチチェック (接続前に実施)
-    if args.commands_list:
-        list_device_type = get_commands_list_device_type(args.commands_list)
-        node_device_type = device.get("device_type")
-
-        try:
-            validate_device_type_for_list(hostname=hostname,
-                                          node_device_type=node_device_type,
-                                          list_name=args.commands_list,
-                                          list_device_type=list_device_type)
-        except ValueError as e:
-            if getattr(args, "force", False):
-                if not args.no_output:
-                    print_warning(f"{e} (--force指定のため続行ケロ🐸)")
-            else:
-                if not args.no_output:
-                    print_error(str(e))
-                    elapsed = perf_counter() - timer
-                    print_warning(f"<NODE: {hostname}> ❌中断ケロ🐸 (elapsed: {elapsed:.2f}s)")
-                return hostname # このホストはスキップ
-
-    # ✅ 3. 接続とプロンプト取得
-    try:
-        connection, prompt, hostname = connect_to_device(device, hostname)
-    except ConnectionError as e:
-        if not args.no_output:
-            print_error(str(e))
-            elapsed = perf_counter() - timer
-            print_warning(f"<NODE: {hostname}> ❌中断ケロ🐸 (elapsed: {elapsed:.2f}s)")
-        return hostname # 失敗時
-    
-    if not args.no_output:
-        print_success(f"<NODE: {hostname}> 🔗接続成功ケロ🐸")
-
-    # ✅ 4. コマンド実行（単発 or リスト）
-    try:
-        result_output_string = _execute_commands(connection, prompt, args, exec_commands, parser_kind)
-    except Exception as e:
-        if not args.no_output:
-            if args.parser == "genie":
-                print_error(f"<NODE: {hostname}> 🧩Genieパース失敗ケロ🐸: {e}")
-            elif args.parser == "textfsm":
-                print_error(f"<NODE: {hostname}> 🧩textfsmパース失敗ケロ🐸: {e}")
-            else:   
-                print_error(f"<NODE: {hostname}> ⚠️実行エラーケロ🐸: {e}")
-            elapsed = perf_counter() - timer
-            print_warning(f"<NODE: {hostname}> ❌中断ケロ🐸 (elapsed: {elapsed:.2f}s)")
-        safe_disconnect(connection)
-        return hostname # 失敗時
-
-    # ✅ 5. 接続終了
-    safe_disconnect(connection)
-
-    # ✅ 6. parser option 使用時の json と ordered 用の処理
-    # display_text = 生テキスト or json 文字列
-    # 表示用。save_json側でjson.dumpsが入るのでsave_jsonの呼び出し時はresult_output_stringを渡す。
-    display_text = result_output_string 
-    if parser_kind and isinstance(result_output_string, (list, dict)):
-        display_text = json.dumps(result_output_string, ensure_ascii=False, indent=2)
-
-    # ordered option用の貯める処理。(quiet | no-outputのときは貯めない。)
-    if output_buffers is not None and args.group and args.ordered and not args.no_output and not args.quiet:
-        output_buffers[hostname] = display_text
-    
-    # ✅ 7. ログ保存（--log指定時のみ）
-    if getattr(args, "log", False):
-        if not getattr(args, "no_output", False):
-            print_info(f"<NODE: {hostname}> 💾ログ保存モードONケロ🐸🔛")
-        if parser_kind in ("genie", "textfsm") and isinstance(result_output_string, (list, dict)):
-            log_path = save_json(result_output_string, hostname, args, parser_kind=parser_kind, mode="execute")
-        else:
-            log_path = save_log(result_output_string, hostname, args)
-        if not getattr(args, "no_output", False):
-            print_success(f"<NODE: {hostname}> 💾ログ保存完了ケロ🐸⏩⏩⏩ {log_path}")
-
-
-    # ✅ 8. 結果表示
-    if not args.no_output:
-        if args.quiet:
-            print_info(f"<NODE: {hostname}> 📄OUTPUTは省略するケロ (hidden by --quiet) 🐸")
-        else:
-            if not (args.group and args.ordered and output_buffers is not None):
-                print_info(f"<NODE: {hostname}> 📄OUTPUTケロ🐸")
-                poutput(display_text)
-    elapsed = perf_counter() - timer
-    if not args.no_output:
-        print_success(f"<NODE: {hostname}> 🔚実行完了ケロ🐸 (elapsed: {elapsed:.2f}s)")
-    return None # 成功時
 
 
 @cmd2.with_argparser(netmiko_execute_parser)
@@ -350,17 +111,24 @@ def do_execute(self, args):
 
     Notes
     -----
-    - 実処理は `_handle_execution()` に委譲。
+    - 実処理は `handle_execution()` に委譲。
     - `cmd2` では ``self.poutput`` が標準出力をラップしているため、
       すべての内部関数にこれを渡してカラー表示や装飾を統一している。
     """
-    # Capabilityチェック
+    # via を確認し、未実装は即終了（UX優先）
+    via = getattr(args, "via", "ssh")
+    if via in ("telnet", "console", "restconf"):
+        print_error(f"via {via}はまだ実装されてないケロ🐸")
+        return
+
+    # Capability_Guard
     try:
         guard_execute(args)
     except CapabilityError as e:
         print_error(str(e))
         return
-
+    
+    # Capability_Guard
     if args.ordered and not args.group:
         print_error("--ordered は --group 指定時のみ使用できるケロ🐸")
         return
@@ -368,10 +136,12 @@ def do_execute(self, args):
     if args.quiet and not args.log:
         print_error("--quietオプションを使用するには--logが必要ケロ🐸")
         return
+    
     elif args.no_output and not args.log:
-        # 現仕様：完全サイレント。黙って終了（将来 notify 実装時に or を足すだけでOK）
+        print_error("--no-outputオプションを使用するには--logが必要ケロ🐸 (画面出力ゼロだと結果が消えるよ)")
         return
 
+    # Parser_Guard
     parser_kind = None
     if args.parser:
         # 表記ゆれ正規化（互換用）
@@ -389,78 +159,114 @@ def do_execute(self, args):
             return
 
 
-    if args.ip:
-        device, hostname = _build_device_and_hostname(args)
-        result_failed_hostname = _handle_execution(device, args, self.poutput, hostname, parser_kind=parser_kind)
-        if result_failed_hostname and not args.no_output:
-            print_error(f"❎ 🐸なんかトラブルケロ@: {result_failed_hostname}")
-        return
-
-    if args.host or args.group: 
-        try:
-            inventory_data = get_validated_inventory_data(host=args.host, group=args.group)
-        
-        except (FileNotFoundError, ValueError) as e:
-            if not args.no_output:
-                print_error(str(e))
-            return
-        
+    # via = getattr(args, "via", "ssh")
     
-    if args.host:
-        device, hostname = _build_device_and_hostname(args, inventory_data)
-        result_failed_hostname = _handle_execution(device, args, self.poutput, hostname, parser_kind=parser_kind)
-        if result_failed_hostname and not args.no_output:
-            print_error(f"❎ 🐸なんかトラブルケロ@: {result_failed_hostname}")
+    ##################
+    ### ssh_module ###
+    ##################
+    if via == "ssh":
+        if args.ip:
+            device, hostname = build_device_and_hostname(args)
+            result_failed_hostname = handle_execution(device, args, self.poutput, hostname, parser_kind=parser_kind)
+            if result_failed_hostname and not args.no_output:
+                print_error(f"❎ 🐸なんかトラブルケロ@: {result_failed_hostname}")
+            return
+
+        if args.host or args.group: 
+            try:
+                inventory_data = get_validated_inventory_data(host=args.host, group=args.group)
+            
+            except (FileNotFoundError, ValueError) as e:
+                if not args.no_output:
+                    print_error(str(e))
+                return
+            
+        
+        if args.host:
+            device, hostname = build_device_and_hostname(args, inventory_data)
+            result_failed_hostname = handle_execution(device, args, self.poutput, hostname, parser_kind=parser_kind)
+            if result_failed_hostname and not args.no_output:
+                print_error(f"❎ 🐸なんかトラブルケロ@: {result_failed_hostname}")
+            return
+
+        elif args.group:
+            device_list, hostname_list = build_device_and_hostname(args, inventory_data)
+
+            max_workers = default_workers(len(device_list), args)
+
+            result_failed_hostname_list = []
+
+            # ✅ --ordered 用の本文バッファ（hostname -> str）
+            ordered_output_buffers = {}  # {hostname: collected_output}
+            lock = threading.Lock()
+
+            with ThreadPoolExecutor(max_workers=max_workers) as pool:
+                futures = []
+                future_to_hostname = {} 
+                ordered_output_enabled =  args.ordered and not args.quiet and not args.no_output
+
+                for device, hostname in zip(device_list, hostname_list):
+                    # --orderedがあって--quietと--no_outputがないこと。
+                    if ordered_output_enabled:
+                        # 順番を並び替えるために貯める。Lockを渡す。
+                        future = pool.submit(handle_execution, device, args, self.poutput, hostname,
+                                             output_buffers=ordered_output_buffers, parser_kind=parser_kind, lock=lock)
+                    else:
+                        future = pool.submit(handle_execution, device, args, self.poutput, hostname,
+                                             parser_kind=parser_kind, lock=lock)
+                    
+                    futures.append(future)
+                    future_to_hostname[future] = hostname
+
+                for future in as_completed(futures):
+                    hostname = future_to_hostname.get(future, "UNKNOWN")
+                    try:
+                        result_failed_hostname = future.result()
+                        if result_failed_hostname:
+                            result_failed_hostname_list.append(result_failed_hostname)
+                    except Exception as e:
+                        # handle_execution で捕まえていない想定外の例外
+                        if not args.no_output:
+                            print_error(f"⚠️ 未処理の例外: {hostname}:{e}")
+            
+            # --orderedの場合は、ここで実行結果をまとめて表示する。
+            if ordered_output_enabled:
+                for h in sorted(ordered_output_buffers.keys(), key=lambda x: (x is None, x or "")):
+                    print_info(f"NODE: {h} 📄OUTPUTケロ🐸")
+                    self.poutput(ordered_output_buffers[h])
+
+            # 結果をまとめて表示
+            if result_failed_hostname_list and not args.no_output:
+                print_warning(f"❎ 🐸なんかトラブルケロ: {', '.join(sorted(result_failed_hostname_list))}")
+            else:
+                if not args.no_output:
+                    print_success("✅ すべてのホストで実行完了ケロ🐸")
+            
+            return # via sshの処理を明示的に閉じる
+
+
+    #####################
+    ### telnet_module ###
+    #####################
+    # NOTE: 現在は到達しない
+    elif via == "telnet":
+        print_error(f"via {via}はまだ実装されてないケロ🐸")
+        return
+    
+
+    ######################
+    ### console_module ###
+    ######################
+    # NOTE: 現在は到達しない
+    elif via == "console":
+        print_error(f"via {via}はまだ実装されてないケロ🐸")
         return
 
-    elif args.group:
-        device_list, hostname_list = _build_device_and_hostname(args, inventory_data)
 
-        max_workers = default_workers(len(device_list), args)
-
-        result_failed_hostname_list = []
-
-        # ✅ --ordered 用の本文バッファ（hostname -> str）
-        ordered_output_buffers = {}  # {hostname: collected_output}
-
-        with ThreadPoolExecutor(max_workers=max_workers) as pool:
-
-            futures = []
-            future_to_hostname = {} 
-
-            ordered_output_enabled =  args.ordered and not args.quiet and not args.no_output
-
-            for device, hostname in zip(device_list, hostname_list):
-                # --orderedがあって--quietと--no_outputがないこと。
-                if ordered_output_enabled:
-                    # 順番を並び替えるために貯める。
-                    future = pool.submit(_handle_execution, device, args, self.poutput, hostname, output_buffers=ordered_output_buffers, parser_kind=parser_kind)
-                else:
-                    future = pool.submit(_handle_execution, device, args, self.poutput, hostname, parser_kind=parser_kind)
-                
-                futures.append(future)
-                future_to_hostname[future] = hostname
-
-            for future in as_completed(futures):
-                hostname = future_to_hostname.get(future, "UNKNOWN")
-                try:
-                    result_failed_hostname = future.result()
-                    if result_failed_hostname:
-                        result_failed_hostname_list.append(result_failed_hostname)
-                except Exception as e:
-                    # _handle_execution で捕まえていない想定外の例外
-                    if not args.no_output:
-                        print_error(f"⚠️ 未処理の例外: {hostname}:{e}")
-        
-        # --orderedの場合は、ここで実行結果をまとめて表示する。
-        if ordered_output_enabled:
-            for h in sorted(ordered_output_buffers.keys(), key=lambda x: (x is None, x or "")):
-                print_info(f"NODE: {h} 📄OUTPUTケロ🐸")
-                self.poutput(ordered_output_buffers[h])
-
-        # 結果をまとめて表示
-        if result_failed_hostname_list and not args.no_output:
-            print_warning(f"❎ 🐸なんかトラブルケロ: {', '.join(sorted(result_failed_hostname_list))}")
-        else:
-            if not args.no_output:
-                print_success("✅ すべてのホストで実行完了ケロ🐸")
+    #######################
+    ### restconf_module ###
+    #######################
+    # NOTE: 現在は到達しない
+    elif via == "restconf":
+        print_error(f"via {via}はまだ実装されてないケロ🐸")
+        return

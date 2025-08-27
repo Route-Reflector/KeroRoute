@@ -95,7 +95,7 @@ def _build_device_from_group(args, inventory_data):
     return device_list, hostname_list
 
 
-def _build_device_and_hostname(args, inventory_data=None):
+def build_device_and_hostname(args, inventory_data=None):
     """
     --ip / --host / --group に応じて接続情報を構築するラッパー関数。
 
