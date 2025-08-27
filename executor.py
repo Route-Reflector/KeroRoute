@@ -67,7 +67,7 @@ netmiko_execute_parser.add_argument("-u", "--username", type=str, default="", he
 netmiko_execute_parser.add_argument("-p", "--password", type=str, default="", help=password_help)
 netmiko_execute_parser.add_argument("-d", "--device_type", type=str, default="cisco_ios", help=device_type_help,
                                     completer=device_types_completer)
-netmiko_execute_parser.add_argument("-P", "--port", type=int, default=22, help=port_help)
+netmiko_execute_parser.add_argument("-P", "--port", type=int, default=None, help=port_help)
 netmiko_execute_parser.add_argument("-t", "--timeout", type=int, default=10, help=timeout_help)
 netmiko_execute_parser.add_argument("-l", "--log", action="store_true", help=log_help)
 netmiko_execute_parser.add_argument("-m", "--memo", type=str, default="", help=memo_help)
@@ -116,10 +116,13 @@ def do_execute(self, args):
       すべての内部関数にこれを渡してカラー表示や装飾を統一している。
     """
     # via を確認し、未実装は即終了（UX優先）
-    via = getattr(args, "via", "ssh")
-    if via in ("telnet", "console", "restconf"):
+    via = getattr(args, "via", "ssh") # ssh, telnet, console, restconfのいずれか 指定なしの場合はssh
+    if via in ("console", "restconf"):
         print_error(f"via {via}はまだ実装されてないケロ🐸")
         return
+    
+    if via == "telnet" and args.port == 22:
+        print_warning("via=telnet なのに --port 22 が指定されてるケロ🐸 通常は 23 だよ")
 
     # Capability_Guard
     try:
@@ -158,13 +161,11 @@ def do_execute(self, args):
             print_error(f"指定のtemplateが見つからないケロ🐸: {args.textfsm_template}")
             return
 
-
-    # via = getattr(args, "via", "ssh")
     
-    ##################
-    ### ssh_module ###
-    ##################
-    if via == "ssh":
+    ###################
+    ### ssh, telnet ###
+    ###################
+    if via in ("ssh", "telnet"):
         if args.ip:
             device, hostname = build_device_and_hostname(args)
             result_failed_hostname = handle_execution(device, args, self.poutput, hostname, parser_kind=parser_kind)
@@ -243,15 +244,6 @@ def do_execute(self, args):
                     print_success("✅ すべてのホストで実行完了ケロ🐸")
             
             return # via sshの処理を明示的に閉じる
-
-
-    #####################
-    ### telnet_module ###
-    #####################
-    # NOTE: 現在は到達しない
-    elif via == "telnet":
-        print_error(f"via {via}はまだ実装されてないケロ🐸")
-        return
     
 
     ######################

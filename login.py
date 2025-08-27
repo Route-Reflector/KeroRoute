@@ -11,7 +11,7 @@ from netmiko.utilities import check_serial_port
 
 from prompt_utils import get_prompt
 from output_logging import save_log
-from build_device import build_device_and_hostname, build_device_and_hostname_for_console
+from build_device import build_device_and_hostname
 from load_and_validate_yaml import get_validated_commands_list, get_validated_inventory_data
 from connect_device import connect_to_device, safe_disconnect
 from workers import default_workers
@@ -154,7 +154,7 @@ def do_login(self, args):
     #         print_error(str(e))
     #         return
     #     if args.host:
-    #         device, hostname = build_device_and_hostname_for_console(args, serial_port=args.serial)
+    #         device, hostname = build_device_and_hostname(args, serial_port=args.serial)
     #     elif args.group:
     #         print_error(f"loginコマンドのコンソールのgroupコマンドはまだ実装されてないケロ🐸")
     #         raise NotImplementedError
