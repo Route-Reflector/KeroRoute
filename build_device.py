@@ -1,6 +1,12 @@
 from message import print_error
 
 
+DEFAULT_SSH_PORT = 22
+DEFAULT_TELNET_PORT = 23
+DEFAULT_TIMEOUT_SECONDS = 10
+
+
+
 def _build_device_from_ip(args):
     """
     --ip オプションが指定されたときに、接続に必要な device 情報とログ用ホスト名を構築する。
@@ -13,6 +19,8 @@ def _build_device_from_ip(args):
             - device: Netmiko 用の接続情報を格納した辞書。
             - hostname_for_log: ログファイル名などに使うホスト識別名（IPアドレス）。
     """
+    port = args.port if getattr(args, "port", None) is not None else DEFAULT_SSH_PORT
+    timeout = args.timeout if getattr(args, "timeout", None) is not None else DEFAULT_TIMEOUT_SECONDS
 
     device = {
         "device_type": args.device_type,
@@ -20,8 +28,8 @@ def _build_device_from_ip(args):
         "username": args.username,
         "password": args.password,
         "secret": args.secret or args.password,
-        "port": args.port,
-        "timeout": args.timeout
+        "port": port,
+        "timeout": timeout
         }
 
     hostname = args.ip
@@ -41,18 +49,22 @@ def _build_device_from_host(args, inventory_data):
             - device: Netmiko 用の接続情報を格納した辞書。
             - hostname_for_log: ログファイル名などに使うホスト識別名（inventory の hostname）。
     """
-    
+    port = args.port if getattr(args, "port", None) is not None else DEFAULT_SSH_PORT
+    timeout = args.timeout if getattr(args, "timeout", None) is not None else DEFAULT_TIMEOUT_SECONDS
+
     node_info = inventory_data["all"]["hosts"][args.host]
-        
+    
     device = {
-        "device_type": node_info["device_type"],
+        # CLIがあれば優先、なければinventory
+        "device_type": args.device_type or node_info["device_type"],
         "ip": node_info["ip"],
-        "username": node_info["username"],
-        "password": node_info["password"],
-        "secret": node_info["secret"] or node_info["password"],
-        "port": node_info["port"],
-        "timeout": node_info["timeout"] 
-        }
+        "username": args.username or node_info["username"],
+        "password": args.password or node_info["password"],
+        # secret は CLI → inventory.secret → inventory.password の順でフォールバック
+        "secret": (args.secret or node_info.get("secret") or node_info["password"]),
+        "port": port,
+        "timeout": timeout,
+    }
 
     hostname = node_info["hostname"]
     return device, hostname 
@@ -71,7 +83,10 @@ def _build_device_from_group(args, inventory_data):
             - device_list: 各ホストの Netmiko 用接続情報のリスト。
             - hostname_for_log_list: 各ホストの hostname（ログ用）のリスト。
     """
-    group_info = inventory_data["all"]["groups"][f"{args.group}"]["hosts"]
+    port = args.port if getattr(args, "port", None) is not None else DEFAULT_SSH_PORT
+    timeout = args.timeout if getattr(args, "timeout", None) is not None else DEFAULT_TIMEOUT_SECONDS
+    
+    group_info = inventory_data["all"]["groups"][args.group]["hosts"]
         
     device_list = []
     hostname_list = []
@@ -79,14 +94,16 @@ def _build_device_from_group(args, inventory_data):
     for node in group_info:
         node_info = inventory_data["all"]["hosts"][f"{node}"]
         device = {
-            "device_type": node_info["device_type"],
+            # CLIがあれば優先、なければinventory
+            "device_type": args.device_type or node_info["device_type"],
             "ip": node_info["ip"],
-            "username": node_info["username"],
-            "password": node_info["password"],
-            "secret": node_info["secret"] or node_info["password"],
-            "port": node_info["port"],
-            "timeout": node_info["timeout"] 
-            } 
+            "username": args.username or node_info["username"],
+            "password": args.password or node_info["password"],
+            # secret は CLI → inventory.secret → inventory.password の順でフォールバック
+            "secret": (args.secret or node_info.get("secret") or node_info["password"]),
+            "port": port,
+            "timeout": timeout,
+        }
         hostname = node_info["hostname"]
         
         device_list.append(device)
@@ -95,25 +112,91 @@ def _build_device_from_group(args, inventory_data):
     return device_list, hostname_list
 
 
-def build_device_and_hostname(args, inventory_data=None):
-    """
-    --ip / --host / --group に応じて接続情報を構築するラッパー関数。
+def _build_device_for_telnet_from_ip(args, inventory_data=None):
+    port = args.port if getattr(args, "port", None) is not None else DEFAULT_TELNET_PORT
+    timeout = args.timeout if getattr(args, "timeout", None) is not None else DEFAULT_TIMEOUT_SECONDS
 
-    Args:
-        args: コマンドライン引数。--ip / --host / --group のいずれかが指定されていること。
-        inventory_data: host/group指定時に使用する inventory.yaml のパース結果。
+    device_type = args.device_type
+    if not device_type.endswith("_telnet"):
+        device_type = device_type + "_telnet"
 
-    Returns:
-        tuple: 
-            - --ip or --host: (dict, str) - 単一のdevice定義とhostname
-            - --group: (list[dict], list[str]) - 複数deviceとhostnameのリスト
-    """
-    if args.ip:
-        return _build_device_from_ip(args)
-    elif args.host:
-        return _build_device_from_host(args, inventory_data)
-    elif args.group:
-        return _build_device_from_group(args, inventory_data)
+    device = {
+    "device_type": device_type,
+    "ip": args.ip,
+    "username": args.username,
+    "password": args.password,
+    "secret": args.secret or args.password,
+    "port": port,
+    "timeout": timeout
+    }
+
+    hostname = args.ip
+    return device, hostname
+
+
+def _build_device_for_telnet_from_host(args, inventory_data=None):
+    port = args.port if getattr(args, "port", None) is not None else DEFAULT_TELNET_PORT
+    timeout = args.timeout if getattr(args, "timeout", None) is not None else DEFAULT_TIMEOUT_SECONDS
+
+    node_info = inventory_data["all"]["hosts"][args.host]
+
+    base_device_type = args.device_type or node_info["device_type"]
+    if not base_device_type.endswith("_telnet"):
+        device_type = base_device_type + "_telnet" 
+    else:
+        device_type = base_device_type
+    
+    device = {
+        # CLIがあれば優先、なければinventory
+        "device_type": device_type,
+        "ip": node_info["ip"],
+        "username": args.username or node_info["username"],
+        "password": args.password or node_info["password"],
+        # secret は CLI → inventory.secret → inventory.password の順でフォールバック
+        "secret": (args.secret or node_info.get("secret") or node_info["password"]),
+        "port": port,
+        "timeout": timeout,
+    }
+
+    hostname = node_info["hostname"]
+    return device, hostname 
+
+
+def _build_device_for_telnet_from_group(args, inventory_data=None):
+    port = args.port if getattr(args, "port", None) is not None else DEFAULT_TELNET_PORT
+    timeout = args.timeout if getattr(args, "timeout", None) is not None else DEFAULT_TIMEOUT_SECONDS
+    
+    group_info = inventory_data["all"]["groups"][args.group]["hosts"]
+        
+    device_list = []
+    hostname_list = []
+
+    for node in group_info:
+        node_info = inventory_data["all"]["hosts"][f"{node}"]
+
+        base_device_type = args.device_type or node_info["device_type"]
+        if not base_device_type.endswith("_telnet"):
+            device_type = base_device_type + "_telnet" 
+        else:
+            device_type = base_device_type    
+
+        device = {
+            # CLIがあれば優先、なければinventory
+            "device_type": device_type,
+            "ip": node_info["ip"],
+            "username": args.username or node_info["username"],
+            "password": args.password or node_info["password"],
+            # secret は CLI → inventory.secret → inventory.password の順でフォールバック
+            "secret": (args.secret or node_info.get("secret") or node_info["password"]),
+            "port": port,
+            "timeout": timeout,
+        }
+        hostname = node_info["hostname"]
+        
+        device_list.append(device)
+        hostname_list.append(hostname)
+    
+    return device_list, hostname_list
 
 
 def _ensure_serial_device_type(device_type: str | None) -> str:
@@ -205,11 +288,59 @@ def _build_device_for_console_from_group():
     raise NotImplementedError
 
 
-def build_device_and_hostname_for_console(args, inventory_data=None, serial_port=None):
-    if args.host:
-        return _build_device_for_console_from_host(args, inventory_data, serial_port)
-    elif args.group:
-        raise NotImplementedError
-        return _build_device_for_console_from_group(args, inventory_data, serial_port)
-    else:    
-        return _build_device_for_console(args, serial_port)
+# def build_device_and_hostname_for_console(args, inventory_data=None, serial_port=None):
+#     if args.host:
+#         return _build_device_for_console_from_host(args, inventory_data, serial_port)
+#     elif args.group:
+#         raise NotImplementedError
+#         return _build_device_for_console_from_group(args, inventory_data, serial_port)
+#     else:    
+#         return _build_device_for_console(args, serial_port)
+
+
+def build_device_and_hostname(args, inventory_data=None, serial_port=None):
+    """
+    --ip / --host / --group に応じて接続情報を構築するラッパー関数。
+
+    Args:
+        args: コマンドライン引数。--ip / --host / --group のいずれかが指定されていること。
+        inventory_data: host/group指定時に使用する inventory.yaml のパース結果。
+
+    Returns:
+        tuple: 
+            - --ip or --host: (dict, str) - 単一のdevice定義とhostname
+            - --group: (list[dict], list[str]) - 複数deviceとhostnameのリスト
+    """
+    if not args.via:
+        raise ValueError("viaが無いのは想定して無いケロ🐸")
+    
+    if args.via == "ssh":
+        if args.ip:
+            return _build_device_from_ip(args)
+        elif args.host:
+            return _build_device_from_host(args, inventory_data)
+        elif args.group:
+            return _build_device_from_group(args, inventory_data)
+        
+    elif args.via == "telnet":
+        if args.ip:
+            return _build_device_for_telnet_from_ip(args)
+        elif args.host:
+            return _build_device_for_telnet_from_host(args, inventory_data)
+        elif args.group:
+            return _build_device_for_telnet_from_group(args, inventory_data)
+
+    elif args.via == "console":
+        if args.host:
+            return _build_device_for_console_from_host(args, inventory_data, serial_port)
+        elif args.group:
+            raise NotImplementedError
+            return _build_device_for_console_from_group(args, inventory_data, serial_port)
+        else:    
+            return _build_device_for_console(args, serial_port)
+    
+
+
+
+
+

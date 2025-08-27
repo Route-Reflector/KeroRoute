@@ -14,7 +14,7 @@ from message import print_error, print_info, print_warning, print_success
 from load_and_validate_yaml import get_validated_inventory_data, get_validated_commands_list, get_commands_list_device_type, validate_device_type_for_list
 from output_logging import save_log, save_json
 from prompt_utils import wait_for_prompt_returned
-from build_device import build_device_and_hostname_for_console
+from build_device import build_device_and_hostname
 from connect_device import connect_to_device_for_console, safe_disconnect
 from completers import host_names_completer, group_names_completer, device_types_completer, commands_list_names_completer
 
@@ -404,13 +404,13 @@ def do_console(self, args):
             return
 
     if args.host:
-        device , hostname = build_device_and_hostname_for_console(args, inventory_data, serial_port)
+        device , hostname = build_device_and_hostname(args, inventory_data, serial_port)
         result_failed_hostname = _handle_console_execution(device, args, self.poutput, hostname, parser_kind=parser_kind)
         if result_failed_hostname and not args.no_output:
             print_error(f"❎ 🐸なんかトラブルケロ@: {result_failed_hostname}")
         return
     elif args.group:
-        device , hostname = build_device_and_hostname_for_console(args, inventory_data, serial_port)
+        device , hostname = build_device_and_hostname(args, inventory_data, serial_port)
         # TODO: group実装時につくる
     # max_workers = default_workers(len(device_list), args)
 
@@ -464,7 +464,7 @@ def do_console(self, args):
         pass
     else:
         # hostやgroupを使用しないとき用
-        device , hostname = build_device_and_hostname_for_console(args, inventory_data, serial_port)
+        device , hostname = build_device_and_hostname(args, inventory_data, serial_port)
         result_failed_hostname = _handle_console_execution(device, args, self.poutput, hostname, parser_kind=parser_kind)
         if result_failed_hostname and not args.no_output:
             print_error(f"❎ 🐸なんかトラブルケロ@: {result_failed_hostname}")
