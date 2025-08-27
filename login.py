@@ -1,4 +1,3 @@
-import argparse
 import re
 from pathlib import Path
 import cmd2
@@ -12,7 +11,7 @@ from netmiko.utilities import check_serial_port
 
 from prompt_utils import get_prompt
 from output_logging import save_log
-from build_device import _build_device_and_hostname, build_device_and_hostname_for_console
+from build_device import build_device_and_hostname, build_device_and_hostname_for_console
 from load_and_validate_yaml import get_validated_commands_list, get_validated_inventory_data
 from connect_device import connect_to_device, safe_disconnect
 from workers import default_workers
@@ -64,7 +63,6 @@ read_timeout_help = ("send_command の応答待ち時間（秒）。\n"
 ######################
 ### PARSER_SECTION ###
 ######################
-# netmiko_login_parser = argparse.ArgumentParser(formatter_class=argparse.RawTextHelpFormatter)
 netmiko_login_parser = Cmd2ArgumentParser(formatter_class=RawTextRichHelpFormatter, description="[green]login コマンド🐸[/green]")
 # "-h" はhelpと競合するから使えない。
 netmiko_login_parser.add_argument("-u", "--username", type=str, default="", help=username_help)
@@ -161,7 +159,7 @@ def do_login(self, args):
     #         print_error(f"loginコマンドのコンソールのgroupコマンドはまだ実装されてないケロ🐸")
     #         raise NotImplementedError
     if args.ip:
-         device, hostname = _build_device_and_hostname(args)
+         device, hostname = build_device_and_hostname(args)
          _handle_login(args, device, hostname)
          return
 
@@ -175,7 +173,7 @@ def do_login(self, args):
                 return
 
         if args.host:
-            device, hostname = _build_device_and_hostname(args, inventory_data)
+            device, hostname = build_device_and_hostname(args, inventory_data)
             _handle_login(args, device, hostname)
             return
 

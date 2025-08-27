@@ -1,4 +1,3 @@
-import argparse
 import cmd2
 from cmd2 import Cmd2ArgumentParser
 from rich_argparse import RawTextRichHelpFormatter
@@ -6,7 +5,7 @@ from rich_argparse import RawTextRichHelpFormatter
 from message import print_info, print_success, print_warning, print_error
 from load_and_validate_yaml import get_validated_inventory_data, get_validated_config_list, CONFIG_LISTS_FILE
 from output_logging import save_log
-from build_device import _build_device_and_hostname
+from build_device import build_device_and_hostname
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from connect_device import connect_to_device, safe_disconnect
 from workers import default_workers
@@ -19,11 +18,8 @@ from capability_guard import guard_configure, CapabilityError
 ip_help = "対象デバイスのIPアドレスを指定します。"
 host_help = "inventory.yamlに定義されたホスト名を指定します。"
 group_help = "inventory.yamlに定義されたグループ名を指定します。グループ内の全ホストにコマンドを実行します。"
-
 command_help = "1つのコマンドを直接指定して実行します。"
-command_list_help = "コマンドリスト名（config-lists.yamlに定義）を指定して実行します。" \
-                    "device_typeはホストから自動で選択されます。"
-
+command_list_help = "コンフィグリスト名（config-lists.yamlに定義）を指定して実行します。"
 username_help = "SSH接続に使用するユーザー名を指定します。省略時はinventory.yamlの値を使用します。"
 password_help = "SSH接続に使用するパスワードを指定します。省略時はinventory.yamlの値を使用します。"
 device_type_help = "Netmikoにおけるデバイスタイプを指定します（例: cisco_ios）。省略時は 'cisco_ios' です。"
@@ -45,7 +41,6 @@ workers_help = ("並列実行するワーカースレッド数を指定します
 ######################
 ### PARSER_SECTION ###
 ######################
-# netmiko_configure_parser = argparse.ArgumentParser(formatter_class=argparse.RawTextHelpFormatter)
 netmiko_configure_parser = Cmd2ArgumentParser(formatter_class=RawTextRichHelpFormatter, description="[green]configure コマンド🐸[/green]")
 # "-h" はhelpと競合するから使えない。
 netmiko_configure_parser.add_argument("-u", "--username", type=str, default="", help=username_help)
@@ -221,7 +216,7 @@ def do_configure(self, args):
 
 
     if args.ip:
-        device, hostname = _build_device_and_hostname(args)
+        device, hostname = build_device_and_hostname(args)
         result_failed_hostname = _handle_configure(device,  args, self.poutput, hostname)
         if result_failed_hostname:
             print_error(f"❎ 🐸なんかトラブルケロ@: {result_failed_hostname}")
@@ -236,14 +231,14 @@ def do_configure(self, args):
             return
     
     if args.host:
-        device, hostname = _build_device_and_hostname(args, inventory_data)
+        device, hostname = build_device_and_hostname(args, inventory_data)
         result_failed_hostname = _handle_configure(device, args, self.poutput, hostname)
         if result_failed_hostname:
             print_error(f"❎ 🐸なんかトラブルケロ@: {result_failed_hostname}")
         return
 
     elif args.group:
-        device_list, hostname_list = _build_device_and_hostname(args, inventory_data)
+        device_list, hostname_list = build_device_and_hostname(args, inventory_data)
 
         max_workers = default_workers(len(device_list), args)
 
