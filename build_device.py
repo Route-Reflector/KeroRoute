@@ -1,10 +1,10 @@
-from message import print_error
-
-
+#####################
+### CONST_SECTION ###
+#####################
 DEFAULT_SSH_PORT = 22
 DEFAULT_TELNET_PORT = 23
 DEFAULT_TIMEOUT_SECONDS = 10
-
+DEFAULT_BAUDRATE = 9600
 
 
 def _build_device_from_ip(args):
@@ -222,7 +222,7 @@ def _build_device_for_console(args, serial_port):
     # Netmiko の必須項目: host or ip
     host_for_netmiko = args.host or "console-session"
 
-    baudrate: int = args.baudrate or 9600
+    baudrate: int = args.baudrate if getattr(args, "baudrate", None) is not None else DEFAULT_BAUDRATE
     secret: str = getattr(args, "secret", None) or args.password or ""
 
     device = {
@@ -230,7 +230,7 @@ def _build_device_for_console(args, serial_port):
         "host": host_for_netmiko, # シリアルでも必須
         "serial_settings": {
             "port": serial_port,
-            "baudrate": baudrate
+            "baudrate": baudrate,
         },
         "username": args.username or "",     # ログイン要求があれば
         "password": args.password or "",      # 同上
@@ -253,9 +253,7 @@ def _build_device_for_console_from_host(args, inventory_data, serial_port):
 
     node_info = inventory_data.get("all", {}).get("hosts", {}).get(f"{args.host}", {})
     if not node_info:
-        msg = f"inventoryにホスト '{args.host}' が見つからないケロ🐸"
-        print_error(msg)
-        raise KeyError(msg)    
+        raise KeyError(f"inventoryにホスト '{args.host}' が見つからないケロ🐸")
 
     base_device_type = args.device_type or node_info.get("device_type") # --device_typeがあれば上書き。
     device_type = _ensure_serial_device_type(base_device_type)
@@ -264,7 +262,7 @@ def _build_device_for_console_from_host(args, inventory_data, serial_port):
     # inventory の hostname が空なら --host 文字列で埋めておく
     host_for_netmiko = node_info.get("hostname") or args.host
 
-    baudrate: int = args.baudrate if args.baudrate is not None else int(node_info.get("baudrate", 9600))
+    baudrate: int = args.baudrate if getattr(args, "baudrate", None) is not None else DEFAULT_BAUDRATE
     secret: str = (getattr(args, "secret", None) or node_info.get("secret", "") or args.password or node_info.get("password", "") or "")
 
     device = {
@@ -286,16 +284,6 @@ def _build_device_for_console_from_host(args, inventory_data, serial_port):
 def _build_device_for_console_from_group():
     # NotImplemented
     raise NotImplementedError
-
-
-# def build_device_and_hostname_for_console(args, inventory_data=None, serial_port=None):
-#     if args.host:
-#         return _build_device_for_console_from_host(args, inventory_data, serial_port)
-#     elif args.group:
-#         raise NotImplementedError
-#         return _build_device_for_console_from_group(args, inventory_data, serial_port)
-#     else:    
-#         return _build_device_for_console(args, serial_port)
 
 
 def build_device_and_hostname(args, inventory_data=None, serial_port=None):
