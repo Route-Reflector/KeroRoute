@@ -112,13 +112,21 @@ def _build_device_from_group(args, inventory_data):
     return device_list, hostname_list
 
 
+def _ensure_telnet_device_type(device_type: str | None) -> str:
+    """
+    inventory には 'cisco_ios' などの“素の型”を書いておく前提。
+    telnet 用ではここで必ず *_telnet に正規化する。
+    """
+    if not device_type:
+        raise ValueError("'device_type' が指定されていないケロ🐸 'inventory.yaml' または '--device-type' を確認してケロ")
+    return device_type if device_type.endswith("_telnet") else f"{device_type}_telnet"
+
+
 def _build_device_for_telnet_from_ip(args, inventory_data=None):
     port = args.port if getattr(args, "port", None) is not None else DEFAULT_TELNET_PORT
     timeout = args.timeout if getattr(args, "timeout", None) is not None else DEFAULT_TIMEOUT_SECONDS
 
-    device_type = args.device_type
-    if not device_type.endswith("_telnet"):
-        device_type = device_type + "_telnet"
+    device_type = _ensure_telnet_device_type(args.device_type)
 
     device = {
     "device_type": device_type,
@@ -141,10 +149,7 @@ def _build_device_for_telnet_from_host(args, inventory_data=None):
     node_info = inventory_data["all"]["hosts"][args.host]
 
     base_device_type = args.device_type or node_info["device_type"]
-    if not base_device_type.endswith("_telnet"):
-        device_type = base_device_type + "_telnet" 
-    else:
-        device_type = base_device_type
+    device_type = _ensure_telnet_device_type(base_device_type)
     
     device = {
         # CLIがあれば優先、なければinventory
@@ -175,10 +180,7 @@ def _build_device_for_telnet_from_group(args, inventory_data=None):
         node_info = inventory_data["all"]["hosts"][f"{node}"]
 
         base_device_type = args.device_type or node_info["device_type"]
-        if not base_device_type.endswith("_telnet"):
-            device_type = base_device_type + "_telnet" 
-        else:
-            device_type = base_device_type    
+        device_type = _ensure_telnet_device_type(base_device_type)    
 
         device = {
             # CLIがあれば優先、なければinventory
@@ -327,8 +329,3 @@ def build_device_and_hostname(args, inventory_data=None, serial_port=None):
         else:    
             return _build_device_for_console(args, serial_port)
     
-
-
-
-
-
