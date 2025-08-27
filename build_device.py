@@ -92,7 +92,7 @@ def _build_device_from_group(args, inventory_data):
     hostname_list = []
 
     for node in group_info:
-        node_info = inventory_data["all"]["hosts"][f"{node}"]
+        node_info = inventory_data["all"]["hosts"][node]
         device = {
             # CLIがあれば優先、なければinventory
             "device_type": args.device_type or node_info["device_type"],
@@ -122,7 +122,7 @@ def _ensure_telnet_device_type(device_type: str | None) -> str:
     return device_type if device_type.endswith("_telnet") else f"{device_type}_telnet"
 
 
-def _build_device_for_telnet_from_ip(args, inventory_data=None):
+def _build_device_for_telnet_from_ip(args):
     port = args.port if getattr(args, "port", None) is not None else DEFAULT_TELNET_PORT
     timeout = args.timeout if getattr(args, "timeout", None) is not None else DEFAULT_TIMEOUT_SECONDS
 
@@ -177,7 +177,7 @@ def _build_device_for_telnet_from_group(args, inventory_data=None):
     hostname_list = []
 
     for node in group_info:
-        node_info = inventory_data["all"]["hosts"][f"{node}"]
+        node_info = inventory_data["all"]["hosts"][node]
 
         base_device_type = args.device_type or node_info["device_type"]
         device_type = _ensure_telnet_device_type(base_device_type)    
@@ -253,7 +253,7 @@ def _build_device_for_console_from_host(args, inventory_data, serial_port):
     if serial_port is None:
         raise ValueError("serial_port が None ケロ🐸 '--serial' を確認してケロ")
 
-    node_info = inventory_data.get("all", {}).get("hosts", {}).get(f"{args.host}", {})
+    node_info = inventory_data.get("all", {}).get("hosts", {}).get(args.host, {})
     if not node_info:
         raise KeyError(f"inventoryにホスト '{args.host}' が見つからないケロ🐸")
 
@@ -328,4 +328,7 @@ def build_device_and_hostname(args, inventory_data=None, serial_port=None):
             return _build_device_for_console_from_group(args, inventory_data, serial_port)
         else:    
             return _build_device_for_console(args, serial_port)
+    
+    else:
+        raise ValueError(f"未対応の via ケロ🐸: {args.via}")
     
