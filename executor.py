@@ -67,7 +67,7 @@ netmiko_execute_parser.add_argument("-u", "--username", type=str, default="", he
 netmiko_execute_parser.add_argument("-p", "--password", type=str, default="", help=password_help)
 netmiko_execute_parser.add_argument("-d", "--device_type", type=str, default="cisco_ios", help=device_type_help,
                                     completer=device_types_completer)
-netmiko_execute_parser.add_argument("-P", "--port", type=int, default=22, help=port_help)
+netmiko_execute_parser.add_argument("-P", "--port", type=int, default=None, help=port_help)
 netmiko_execute_parser.add_argument("-t", "--timeout", type=int, default=10, help=timeout_help)
 netmiko_execute_parser.add_argument("-l", "--log", action="store_true", help=log_help)
 netmiko_execute_parser.add_argument("-m", "--memo", type=str, default="", help=memo_help)
@@ -120,6 +120,9 @@ def do_execute(self, args):
     if via in ("console", "restconf"):
         print_error(f"via {via}はまだ実装されてないケロ🐸")
         return
+    
+    if via == "telnet" and args.port == 22:
+        print_warning("via=telnet なのに --port 22 が指定されてるケロ🐸 通常は 23 だよ")
 
     # Capability_Guard
     try:
@@ -241,15 +244,6 @@ def do_execute(self, args):
                     print_success("✅ すべてのホストで実行完了ケロ🐸")
             
             return # via sshの処理を明示的に閉じる
-
-
-    #####################
-    ### telnet_module ###
-    #####################
-    # # NOTE: 現在は到達しない
-    # elif via == "telnet":
-    #     print_error(f"via {via}はまだ実装されてないケロ🐸")
-    #     return
     
 
     ######################
