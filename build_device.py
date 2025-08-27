@@ -4,7 +4,53 @@
 DEFAULT_SSH_PORT = 22
 DEFAULT_TELNET_PORT = 23
 DEFAULT_TIMEOUT_SECONDS = 10
+TIMEOUT_MINIMUM_SECONDS = 1
+TIMEOUT_MAXIMUM_SECONDS = 600
 DEFAULT_BAUDRATE = 9600
+ALLOWED_BAUDRATES = {9600, 19200, 38400, 57600, 115200}
+
+
+def _validate_port(port):
+    if port is None:
+        return None
+
+    try:
+        port = int(port)
+    except (TypeError, ValueError):
+        raise ValueError(f"portは整数で指定してケロ🐸: {port}")
+
+    if not (1 <= port <= 65535):
+        raise ValueError("portは 1-65535 の範囲で指定してケロ🐸")
+
+    return port 
+
+
+def _validate_timeout(timeout, *, min_sec=TIMEOUT_MINIMUM_SECONDS, max_sec=TIMEOUT_MAXIMUM_SECONDS):
+    if timeout is None:
+       return None
+
+    try:
+        timeout = int(timeout)
+    except (TypeError, ValueError):
+        raise ValueError(f"timeoutは整数で指定してケロ🐸: {timeout}")
+    
+    if not (min_sec <= timeout <= max_sec):
+       raise ValueError(f"timeoutは {min_sec} - {max_sec} の範囲で指定してケロ🐸")
+
+    return timeout
+
+def _validate_baudrate(baudrate):
+    if baudrate is None:
+        return None
+    
+    try:
+        baudrate = int(baudrate)
+    except (TypeError, ValueError):
+        raise ValueError(f"baudrateは整数で指定してケロ🐸: {baudrate}")
+    
+    if baudrate not in ALLOWED_BAUDRATE:
+        raise ValueError(f"baudrate は次の中から選んでケロ🐸: {sorted(ALLOWED_BAUDRATES)}")
+    return baudrate
 
 
 def _build_device_from_ip(args):
@@ -21,6 +67,9 @@ def _build_device_from_ip(args):
     """
     port = args.port if getattr(args, "port", None) is not None else DEFAULT_SSH_PORT
     timeout = args.timeout if getattr(args, "timeout", None) is not None else DEFAULT_TIMEOUT_SECONDS
+
+    port = _validate_port(port)
+    timeout = _validate_timeout(timeout)
 
     device = {
         "device_type": args.device_type,
@@ -51,6 +100,9 @@ def _build_device_from_host(args, inventory_data):
     """
     port = args.port if getattr(args, "port", None) is not None else DEFAULT_SSH_PORT
     timeout = args.timeout if getattr(args, "timeout", None) is not None else DEFAULT_TIMEOUT_SECONDS
+    
+    port = _validate_port(port)
+    timeout = _validate_timeout(timeout)
 
     node_info = inventory_data["all"]["hosts"][args.host]
     
@@ -85,6 +137,9 @@ def _build_device_from_group(args, inventory_data):
     """
     port = args.port if getattr(args, "port", None) is not None else DEFAULT_SSH_PORT
     timeout = args.timeout if getattr(args, "timeout", None) is not None else DEFAULT_TIMEOUT_SECONDS
+    
+    port = _validate_port(port)
+    timeout = _validate_timeout(timeout)
     
     group_info = inventory_data["all"]["groups"][args.group]["hosts"]
         
@@ -126,6 +181,9 @@ def _build_device_for_telnet_from_ip(args):
     port = args.port if getattr(args, "port", None) is not None else DEFAULT_TELNET_PORT
     timeout = args.timeout if getattr(args, "timeout", None) is not None else DEFAULT_TIMEOUT_SECONDS
 
+    port = _validate_port(port)
+    timeout = _validate_timeout(timeout)
+    
     device_type = _ensure_telnet_device_type(args.device_type)
 
     device = {
@@ -145,6 +203,9 @@ def _build_device_for_telnet_from_ip(args):
 def _build_device_for_telnet_from_host(args, inventory_data=None):
     port = args.port if getattr(args, "port", None) is not None else DEFAULT_TELNET_PORT
     timeout = args.timeout if getattr(args, "timeout", None) is not None else DEFAULT_TIMEOUT_SECONDS
+    
+    port = _validate_port(port)
+    timeout = _validate_timeout(timeout)
 
     node_info = inventory_data["all"]["hosts"][args.host]
 
@@ -170,6 +231,9 @@ def _build_device_for_telnet_from_host(args, inventory_data=None):
 def _build_device_for_telnet_from_group(args, inventory_data=None):
     port = args.port if getattr(args, "port", None) is not None else DEFAULT_TELNET_PORT
     timeout = args.timeout if getattr(args, "timeout", None) is not None else DEFAULT_TIMEOUT_SECONDS
+    
+    port = _validate_port(port)
+    timeout = _validate_timeout(timeout)
     
     group_info = inventory_data["all"]["groups"][args.group]["hosts"]
         
@@ -225,6 +289,7 @@ def _build_device_for_console(args, serial_port):
     host_for_netmiko = args.host or "console-session"
 
     baudrate: int = args.baudrate if getattr(args, "baudrate", None) is not None else DEFAULT_BAUDRATE
+    baudrate = _validate_baudrate(baudrate)
     secret: str = getattr(args, "secret", None) or args.password or ""
 
     device = {
@@ -265,6 +330,7 @@ def _build_device_for_console_from_host(args, inventory_data, serial_port):
     host_for_netmiko = node_info.get("hostname") or args.host
 
     baudrate: int = args.baudrate if getattr(args, "baudrate", None) is not None else DEFAULT_BAUDRATE
+    baudrate = _validate_baudrate(baudrate)
     secret: str = (getattr(args, "secret", None) or node_info.get("secret", "") or args.password or node_info.get("password", "") or "")
 
     device = {
