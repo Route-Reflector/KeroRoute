@@ -1,3 +1,6 @@
+from utils import is_valid_ip
+
+
 #####################
 ### CONST_SECTION ###
 #####################
@@ -48,7 +51,7 @@ def _validate_baudrate(baudrate):
     except (TypeError, ValueError):
         raise ValueError(f"baudrateは整数で指定してケロ🐸: {baudrate}")
     
-    if baudrate not in ALLOWED_BAUDRATE:
+    if baudrate not in ALLOWED_BAUDRATES:
         raise ValueError(f"baudrate は次の中から選んでケロ🐸: {sorted(ALLOWED_BAUDRATES)}")
     return baudrate
 
@@ -65,6 +68,13 @@ def _build_device_from_ip(args):
             - device: Netmiko 用の接続情報を格納した辞書。
             - hostname_for_log: ログファイル名などに使うホスト識別名（IPアドレス）。
     """
+    if not args.device_type:
+        raise ValueError("'--device-type' が未指定ケロ🐸 SSH 接続には必須ケロ")
+
+    ip = args.ip
+    if not is_valid_ip(ip):
+        raise ValueError(f"--ip で指定した値が [ipv4|ipv6] アドレスとして認識できないケロ🐸: {ip}")
+
     port = args.port if getattr(args, "port", None) is not None else DEFAULT_SSH_PORT
     timeout = args.timeout if getattr(args, "timeout", None) is not None else DEFAULT_TIMEOUT_SECONDS
 
@@ -73,7 +83,7 @@ def _build_device_from_ip(args):
 
     device = {
         "device_type": args.device_type,
-        "ip": args.ip,
+        "ip": ip,
         "username": args.username,
         "password": args.password,
         "secret": args.secret or args.password,
@@ -81,7 +91,7 @@ def _build_device_from_ip(args):
         "timeout": timeout
         }
 
-    hostname = args.ip
+    hostname = ip
     return device, hostname
 
 
@@ -105,11 +115,22 @@ def _build_device_from_host(args, inventory_data):
     timeout = _validate_timeout(timeout)
 
     node_info = inventory_data["all"]["hosts"][args.host]
-    
+
+    ip = args.ip or node_info["ip"]
+    if not is_valid_ip(ip):
+        if args.ip is not None:
+            raise ValueError(f"--ip で指定した値が [ipv4|ipv6] アドレスとして認識できないケロ🐸: {ip}")
+        else:
+            raise ValueError(f"inventory の ip が [ipv4|ipv6] アドレスとして認識できないケロ🐸: {ip}")
+
+    device_type = args.device_type or node_info["device_type"]
+    if not device_type:
+        raise ValueError("'--device-type' が未指定ケロ🐸 SSH 接続には必須ケロ")
+
     device = {
         # CLIがあれば優先、なければinventory
-        "device_type": args.device_type or node_info["device_type"],
-        "ip": node_info["ip"],
+        "device_type": device_type,
+        "ip": ip,
         "username": args.username or node_info["username"],
         "password": args.password or node_info["password"],
         # secret は CLI → inventory.secret → inventory.password の順でフォールバック
@@ -118,7 +139,7 @@ def _build_device_from_host(args, inventory_data):
         "timeout": timeout,
     }
 
-    hostname = node_info["hostname"]
+    hostname = node_info.get("hostname") or ip
     return device, hostname 
 
 
@@ -145,13 +166,22 @@ def _build_device_from_group(args, inventory_data):
         
     device_list = []
     hostname_list = []
-
+    
     for node in group_info:
         node_info = inventory_data["all"]["hosts"][node]
+        
+        ip = node_info["ip"]
+        if not is_valid_ip(ip):
+            raise ValueError(f"inventory の ip が [ipv4|ipv6] アドレスとして認識できないケロ🐸: {ip}")
+        
+        device_type = args.device_type or node_info["device_type"]
+        if not device_type:
+            raise ValueError("'--device-type' が未指定ケロ🐸 SSH 接続には必須ケロ")
+
         device = {
             # CLIがあれば優先、なければinventory
-            "device_type": args.device_type or node_info["device_type"],
-            "ip": node_info["ip"],
+            "device_type": device_type,
+            "ip": ip,
             "username": args.username or node_info["username"],
             "password": args.password or node_info["password"],
             # secret は CLI → inventory.secret → inventory.password の順でフォールバック
@@ -159,7 +189,7 @@ def _build_device_from_group(args, inventory_data):
             "port": port,
             "timeout": timeout,
         }
-        hostname = node_info["hostname"]
+        hostname = node_info.get("hostname") or node
         
         device_list.append(device)
         hostname_list.append(hostname)
@@ -178,6 +208,10 @@ def _ensure_telnet_device_type(device_type: str | None) -> str:
 
 
 def _build_device_for_telnet_from_ip(args):
+    ip = args.ip
+    if not is_valid_ip(ip):
+        raise ValueError(f"--ip で指定した値が [ipv4|ipv6] アドレスとして認識できないケロ🐸: {ip}")
+
     port = args.port if getattr(args, "port", None) is not None else DEFAULT_TELNET_PORT
     timeout = args.timeout if getattr(args, "timeout", None) is not None else DEFAULT_TIMEOUT_SECONDS
 
@@ -188,7 +222,7 @@ def _build_device_for_telnet_from_ip(args):
 
     device = {
     "device_type": device_type,
-    "ip": args.ip,
+    "ip": ip,
     "username": args.username,
     "password": args.password,
     "secret": args.secret or args.password,
@@ -196,11 +230,11 @@ def _build_device_for_telnet_from_ip(args):
     "timeout": timeout
     }
 
-    hostname = args.ip
+    hostname = ip
     return device, hostname
 
 
-def _build_device_for_telnet_from_host(args, inventory_data=None):
+def _build_device_for_telnet_from_host(args, inventory_data):
     port = args.port if getattr(args, "port", None) is not None else DEFAULT_TELNET_PORT
     timeout = args.timeout if getattr(args, "timeout", None) is not None else DEFAULT_TIMEOUT_SECONDS
     
@@ -211,11 +245,19 @@ def _build_device_for_telnet_from_host(args, inventory_data=None):
 
     base_device_type = args.device_type or node_info["device_type"]
     device_type = _ensure_telnet_device_type(base_device_type)
-    
+
+    ip = args.ip or node_info["ip"]
+    if not is_valid_ip(ip):
+        if args.ip is not None:
+            raise ValueError(f"--ip で指定した値が [ipv4|ipv6] アドレスとして認識できないケロ🐸: {ip}")
+        else:
+            raise ValueError(f"inventory の ip が [ipv4|ipv6] アドレスとして認識できないケロ🐸: {ip}")
+
+
     device = {
         # CLIがあれば優先、なければinventory
         "device_type": device_type,
-        "ip": node_info["ip"],
+        "ip": ip,
         "username": args.username or node_info["username"],
         "password": args.password or node_info["password"],
         # secret は CLI → inventory.secret → inventory.password の順でフォールバック
@@ -224,11 +266,11 @@ def _build_device_for_telnet_from_host(args, inventory_data=None):
         "timeout": timeout,
     }
 
-    hostname = node_info["hostname"]
+    hostname = node_info.get("hostname") or args.host
     return device, hostname 
 
 
-def _build_device_for_telnet_from_group(args, inventory_data=None):
+def _build_device_for_telnet_from_group(args, inventory_data):
     port = args.port if getattr(args, "port", None) is not None else DEFAULT_TELNET_PORT
     timeout = args.timeout if getattr(args, "timeout", None) is not None else DEFAULT_TIMEOUT_SECONDS
     
@@ -244,12 +286,16 @@ def _build_device_for_telnet_from_group(args, inventory_data=None):
         node_info = inventory_data["all"]["hosts"][node]
 
         base_device_type = args.device_type or node_info["device_type"]
-        device_type = _ensure_telnet_device_type(base_device_type)    
+        device_type = _ensure_telnet_device_type(base_device_type)
+
+        ip = node_info["ip"]
+        if not is_valid_ip(ip):
+            raise ValueError(f"inventory の ip が [ipv4|ipv6] アドレスとして認識できないケロ🐸: {ip}")
 
         device = {
             # CLIがあれば優先、なければinventory
             "device_type": device_type,
-            "ip": node_info["ip"],
+            "ip": ip,
             "username": args.username or node_info["username"],
             "password": args.password or node_info["password"],
             # secret は CLI → inventory.secret → inventory.password の順でフォールバック
@@ -257,7 +303,7 @@ def _build_device_for_telnet_from_group(args, inventory_data=None):
             "port": port,
             "timeout": timeout,
         }
-        hostname = node_info["hostname"]
+        hostname = node_info.get("hostname") or node
         
         device_list.append(device)
         hostname_list.append(hostname)
