@@ -4,6 +4,7 @@ import cmd2
 from cmd2 import Cmd2ArgumentParser
 from rich_argparse import RawTextRichHelpFormatter
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from netmiko.utilities import check_serial_port
 
 from message import print_info, print_success, print_warning, print_error
 from build_device import build_device_and_hostname
@@ -55,6 +56,14 @@ textfsm_template_help = ("--parser optionで textfsm を指定する際に templ
 force_help = "device_type の不一致や未設定エラーを無視して強制実行するケロ🐸"
 via_help = ("executeコマンドを実行するprotocolを指定します。\n"
             "[ssh telnet console restconf]から1つ選択します。指定しない場合はsshになります。🐸")
+serial_help = ("使用するシリアルポートを指定します。\n"
+               "example: console --serial /dev/ttyUSB0\n")
+baudrate_help = ("使用するbaudrateを指定します。\n"
+                 "example: console --baudrate 9600")
+read_timeout_help = ("send_command の応答待ち時間（秒）。\n"
+                     "重いコマンド（例: show tech）用に指定します。\n"
+                     "console --host R1 -c 'show tech' --read_timeout 1000"
+                     "default: 60 (seconds)")
 
 
 ######################
@@ -80,6 +89,9 @@ netmiko_execute_parser.add_argument("--textfsm-template", type=str,  help=textfs
 netmiko_execute_parser.add_argument("--force", action="store_true", help=force_help)
 netmiko_execute_parser.add_argument("--via", "-v", "--by", "-V",  dest="via", 
                                     choices=["ssh", "telnet", "console", "restconf"], default="ssh", help=via_help)
+netmiko_execute_parser.add_argument("-S", "--serial", nargs="+", default=["/dev/ttyUSB0"], help=serial_help)
+netmiko_execute_parser.add_argument("-b", "--baudrate", type=int, default=None, help=baudrate_help)
+netmiko_execute_parser.add_argument("-r", "--read_timeout", "--read-timeout", dest="read_timeout", type=int, default=60, help=read_timeout_help)
 
 
 # mutually exclusive
@@ -117,7 +129,7 @@ def do_execute(self, args):
     """
     # via を確認し、未実装は即終了（UX優先）
     via = getattr(args, "via", "ssh") # ssh, telnet, console, restconfのいずれか 指定なしの場合はssh
-    if via in ("console", "restconf"):
+    if via == "restconf":
         print_error(f"via {via}はまだ実装されてないケロ🐸")
         return
     
@@ -160,14 +172,54 @@ def do_execute(self, args):
         if not Path(args.textfsm_template).is_file():
             print_error(f"指定のtemplateが見つからないケロ🐸: {args.textfsm_template}")
             return
+    
+    
+    # ❶ シリアルポートのチェック
+    if via == "console":
+        try:
+            # args.serial は list になっている（nargs='+'）
+            serial_list = args.serial if isinstance(args.serial, list) else [args.serial]
+ 
+            # print連打を避けるための簡易キャッシュ（複数ポート対応）
+            if not hasattr(self, "_printed_serial_ports"):
+                self._printed_serial_ports = set()
+ 
+            checked_ports = []
+            for sp in serial_list:
+                real = check_serial_port(sp)  # ここで存在/権限チェック。失敗なら except へ
+                if not args.no_output and real not in self._printed_serial_ports:
+                    print_info(f"✅ 使用可能なポート: {real}")
+                    self._printed_serial_ports.add(real)
+                checked_ports.append(real)
+ 
+            # group ならリストのまま、単体なら先頭だけ（従来互換）
+            if args.group:
+                serial_port = checked_ports
+            else:
+                serial_port = checked_ports[0]
+                # 単発ターゲットなのに複数シリアル指定があれば親切に警告しておく
+                if not args.no_output and len(checked_ports) > 1:
+                    print_warning("複数の --serial が指定されたけど単一ターゲットなので先頭の1本だけ使うケロ🐸")
+        except ValueError as e:
+            if not args.no_output:
+                print_error(str(e))
+                print_warning(f"❌中断ケロ🐸")
+                return
+    else:
+        serial_port = None
 
     
     ###################
     ### ssh, telnet ###
     ###################
-    if via in ("ssh", "telnet"):
+    if via in ("ssh", "telnet", "console"):
+
         if args.ip:
-            device, hostname = build_device_and_hostname(args)
+            if via == "console":
+                device, hostname = build_device_and_hostname(args, serial_port=serial_port)
+            else:
+                device, hostname = build_device_and_hostname(args)
+                
             result_failed_hostname = handle_execution(device, args, self.poutput, hostname, parser_kind=parser_kind)
             if result_failed_hostname and not args.no_output:
                 print_error(f"❎ 🐸なんかトラブルケロ@: {result_failed_hostname}")
@@ -181,17 +233,28 @@ def do_execute(self, args):
                 if not args.no_output:
                     print_error(str(e))
                 return
-            
+        
+        # 🚧 via=console の --group はまだ未実装（明示的に弾く）
+        if args.group and via == "console":
+            print_error("--via console で --group はまだ未実装ケロ🐸（multi-USB / one-cable-multi 実装時に対応予定）")
+            return
         
         if args.host:
-            device, hostname = build_device_and_hostname(args, inventory_data)
+            if via == "console":
+                device, hostname = build_device_and_hostname(args, inventory_data, serial_port=serial_port)
+            else:
+                device, hostname = build_device_and_hostname(args, inventory_data)
+
             result_failed_hostname = handle_execution(device, args, self.poutput, hostname, parser_kind=parser_kind)
             if result_failed_hostname and not args.no_output:
                 print_error(f"❎ 🐸なんかトラブルケロ@: {result_failed_hostname}")
             return
 
         elif args.group:
-            device_list, hostname_list = build_device_and_hostname(args, inventory_data)
+            if via == "console":
+                device_list, hostname_list = build_device_and_hostname(args, inventory_data, serial_port=serial_port)
+            else:
+                device_list, hostname_list = build_device_and_hostname(args, inventory_data)
 
             max_workers = default_workers(len(device_list), args)
 
@@ -244,21 +307,12 @@ def do_execute(self, args):
                     print_success("✅ すべてのホストで実行完了ケロ🐸")
             
             return # via sshの処理を明示的に閉じる
-    
-
-    ######################
-    ### console_module ###
-    ######################
-    # NOTE: 現在は到達しない
-    elif via == "console":
-        print_error(f"via {via}はまだ実装されてないケロ🐸")
-        return
-
-
-    #######################
-    ### restconf_module ###
-    #######################
-    # NOTE: 現在は到達しない
-    elif via == "restconf":
-        print_error(f"via {via}はまだ実装されてないケロ🐸")
-        return
+        
+        else:
+            # consoleかつip,host,groupを使用しないパターン
+            if via == "console":
+                device , hostname = build_device_and_hostname(args, inventory_data, serial_port)
+                result_failed_hostname = handle_execution(device, args, self.poutput, hostname, parser_kind=parser_kind)
+                if result_failed_hostname and not args.no_output:
+                    print_error(f"❎ 🐸なんかトラブルケロ@: {result_failed_hostname}")
+                return
