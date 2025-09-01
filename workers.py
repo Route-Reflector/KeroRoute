@@ -2,7 +2,7 @@ from load_and_validate_yaml import load_sys_config
 
 
 #######################
-###  CONST_SECTION  ### 
+###  CONST_SECTION  ###
 #######################
 DEFAULT_MAX_WORKERS = 20 # 並列スレッド上限。(sys_config.yamlに設定が無い場合に参照。)
 
@@ -38,27 +38,26 @@ def default_workers(group_size: int, args) -> int:
     """
     workers = args.workers
 
-    if workers or workers == 0: # workers が None なら False、0 だけ特別に True 扱い
-        if type(workers) != int:
-                msg = "--workersは整数である必要があるケロ🐸。"
-                raise ValueError(msg)
+    # ❶ CLI 指定があればそれを優先 (0|負数はerror)
+    if workers is not None:
+        if not isinstance(workers, int):
+            raise ValueError("--workers は整数である必要があるケロ🐸")
 
         if workers <= 0:
-            msg = "--workersには1以上の整数を指定してくださいケロ🐸"
-            raise ValueError(msg)
-
+            raise ValueError("--workers には1以上の整数を指定してくださいケロ🐸")
+    
+    # ❷ 未指定なら system_config
     else:
-        system_config = load_sys_config()
-        workers = system_config["executor"].get("default_workers", DEFAULT_MAX_WORKERS)
+        system_config = load_sys_config() or {}
+        executor_config = system_config.get("executor") or {}
+        workers = executor_config.get("default_workers", DEFAULT_MAX_WORKERS)
 
-        if type(workers) != int:
-                msg = "sys_config.yamlのexecutor.default_workerは整数である必要があるケロ🐸。"
-                raise ValueError(msg)
+        if not isinstance(workers, int):
+            raise ValueError("sys_config.yaml の executor.default_workers は整数である必要があるケロ🐸")
         
         if workers <= 0:
-            msg = "executor.default_workersには1以上の整数を指定してくださいケロ🐸"
-            raise ValueError(msg)
+            raise ValueError("executor.default_workers には1以上の整数を指定してくださいケロ🐸")
 
-
-    workers = min(workers, group_size, DEFAULT_MAX_WORKERS)
+    # ❸ 上限と対象台数でクリップ(最低1にしておくと安全)
+    workers = max(1, min(workers, group_size, DEFAULT_MAX_WORKERS))
     return workers

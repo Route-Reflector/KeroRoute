@@ -95,7 +95,7 @@ netmiko_execute_parser.add_argument("-r", "--read_timeout", "--read-timeout", de
 
 
 # mutually exclusive
-target_node = netmiko_execute_parser.add_mutually_exclusive_group(required=True)
+target_node = netmiko_execute_parser.add_mutually_exclusive_group(required=False)
 target_node.add_argument("-i", "--ip", type=str, nargs="?", default=None, help=ip_help)
 target_node.add_argument("--host", type=str, nargs="?", default=None, help=host_help, completer=host_names_completer)
 target_node.add_argument("--group", type=str, nargs="?", default=None, help=group_help, completer=group_names_completer)
@@ -135,6 +135,10 @@ def do_execute(self, args):
     
     if via == "telnet" and args.port == 22:
         print_warning("via=telnet なのに --port 22 が指定されてるケロ🐸 通常は 23 だよ")
+    
+    no_target = not (args.ip or args.host or args.group)
+    if no_target and via != "console":
+        print_error("ssh|telnetでは --ip か --host か --group の指定が必要ケロ🐸")
 
     # Capability_Guard
     try:
@@ -208,6 +212,8 @@ def do_execute(self, args):
     else:
         serial_port = None
 
+    # ❷ inventory_data を先に初期化しておく (host/groupが無い経路用)
+    inventory_data = None
     
     ###################
     ### ssh, telnet ###
@@ -234,11 +240,6 @@ def do_execute(self, args):
                     print_error(str(e))
                 return
         
-        # 🚧 via=console の --group はまだ未実装（明示的に弾く）
-        if args.group and via == "console":
-            print_error("--via console で --group はまだ未実装ケロ🐸（multi-USB / one-cable-multi 実装時に対応予定）")
-            return
-        
         if args.host:
             if via == "console":
                 device, hostname = build_device_and_hostname(args, inventory_data, serial_port=serial_port)
@@ -252,61 +253,121 @@ def do_execute(self, args):
 
         elif args.group:
             if via == "console":
-                device_list, hostname_list = build_device_and_hostname(args, inventory_data, serial_port=serial_port)
+                # === via=console: build_device 側が“バッチ配列”を返す ===
+                batches = build_device_and_hostname(args, inventory_data, serial_port=serial_port)
+                # example: [(device_list, hostname_list), (device_list, hostname_list), ...]
+
+                result_failed_hostname_list = []
+                for batch_idx, (device_list, hostname_list) in enumerate(batches, start=1):
+                    max_workers = default_workers(len(device_list), args)
+
+                    ordered_output_buffers = {} # --ordered 用
+                    lock = threading.Lock()
+                    futures = []
+                    future_to_hostname = {}
+                    ordered_output_enabled = args.ordered and not args.quiet and not args.no_output
+
+                    with ThreadPoolExecutor(max_workers=max_workers) as pool:
+                        for device, hostname in zip(device_list, hostname_list):
+                            if ordered_output_enabled:
+                                future = pool.submit(handle_execution, device, args, self.poutput, hostname,
+                                                     output_buffers=ordered_output_buffers,
+                                                     parser_kind=parser_kind, lock=lock)
+                            else:
+                                future = pool.submit(handle_execution, device, args, self.poutput, hostname,
+                                                     parser_kind=parser_kind, lock=lock)
+                            
+                            futures.append(future)
+                            future_to_hostname[future] = hostname
+                        
+                        for future in as_completed(futures):
+                            hostname = future_to_hostname.get(future, "UNKNOWN")
+                            try:
+                                result_failed_hostname = future.result()
+                                if result_failed_hostname:
+                                    result_failed_hostname_list.append(result_failed_hostname)
+                            except Exception as e:
+                                if not args.no_output:
+                                    print_error(f"⚠️ 未処理の例外: {hostname}:{e}")
+
+                    # --ordered の表示（このバッチ分）
+                    if ordered_output_enabled:
+                        for h in sorted(ordered_output_buffers.keys(), key=lambda x: (x is None, x or "")):
+                            print_info(f"NODE: {h} 📄OUTPUTケロ🐸")
+                            self.poutput(ordered_output_buffers[h])
+                    
+                    # バッチ間の差し替え案内
+                    if batch_idx < len(batches) and not args.no_output:
+                        print_success(f"✅ バッチ {batch_idx}/{len(batches)} 完了ケロ🐸")
+                        print_info("🔌 次のバッチに向けてケーブルを差し替えてね（同じ順番でOK）")
+                        try:
+                            input("準備できたら Enter を押して 続行ケロ🐸")
+                        except KeyboardInterrupt:
+                            print_warning("⛔ 中断ケロ🐸")
+                            return
+                    
+                    # 全体まとめ
+                    if result_failed_hostname_list and not args.no_output:
+                        print_warning(f"❎ 一部失敗ケロ: {', '.join(sorted(result_failed_hostname_list))}")
+                    else:
+                        if not args.no_output:
+                            print_success("🎉 すべてのバッチが完了したケロ🐸")
+
             else:
+                # via != consoleの場合
                 device_list, hostname_list = build_device_and_hostname(args, inventory_data)
 
-            max_workers = default_workers(len(device_list), args)
+                max_workers = default_workers(len(device_list), args)
 
-            result_failed_hostname_list = []
+                result_failed_hostname_list = []
 
-            # ✅ --ordered 用の本文バッファ（hostname -> str）
-            ordered_output_buffers = {}  # {hostname: collected_output}
-            lock = threading.Lock()
+                # ✅ --ordered 用の本文バッファ（hostname -> str）
+                ordered_output_buffers = {}  # {hostname: collected_output}
+                lock = threading.Lock()
 
-            with ThreadPoolExecutor(max_workers=max_workers) as pool:
-                futures = []
-                future_to_hostname = {} 
-                ordered_output_enabled =  args.ordered and not args.quiet and not args.no_output
+                with ThreadPoolExecutor(max_workers=max_workers) as pool:
+                    futures = []
+                    future_to_hostname = {} 
+                    ordered_output_enabled =  args.ordered and not args.quiet and not args.no_output
 
-                for device, hostname in zip(device_list, hostname_list):
-                    # --orderedがあって--quietと--no_outputがないこと。
-                    if ordered_output_enabled:
-                        # 順番を並び替えるために貯める。Lockを渡す。
-                        future = pool.submit(handle_execution, device, args, self.poutput, hostname,
-                                             output_buffers=ordered_output_buffers, parser_kind=parser_kind, lock=lock)
-                    else:
-                        future = pool.submit(handle_execution, device, args, self.poutput, hostname,
-                                             parser_kind=parser_kind, lock=lock)
-                    
-                    futures.append(future)
-                    future_to_hostname[future] = hostname
+                    for device, hostname in zip(device_list, hostname_list):
+                        # --orderedがあって--quietと--no_outputがないこと。
+                        if ordered_output_enabled:
+                            # 順番を並び替えるために貯める。Lockを渡す。
+                            future = pool.submit(handle_execution, device, args, self.poutput, hostname,
+                                                output_buffers=ordered_output_buffers, parser_kind=parser_kind, lock=lock)
+                        else:
+                            future = pool.submit(handle_execution, device, args, self.poutput, hostname,
+                                                parser_kind=parser_kind, lock=lock)
+                        
+                        futures.append(future)
+                        future_to_hostname[future] = hostname
 
-                for future in as_completed(futures):
-                    hostname = future_to_hostname.get(future, "UNKNOWN")
-                    try:
-                        result_failed_hostname = future.result()
-                        if result_failed_hostname:
-                            result_failed_hostname_list.append(result_failed_hostname)
-                    except Exception as e:
-                        # handle_execution で捕まえていない想定外の例外
-                        if not args.no_output:
-                            print_error(f"⚠️ 未処理の例外: {hostname}:{e}")
-            
-            # --orderedの場合は、ここで実行結果をまとめて表示する。
-            if ordered_output_enabled:
-                for h in sorted(ordered_output_buffers.keys(), key=lambda x: (x is None, x or "")):
-                    print_info(f"NODE: {h} 📄OUTPUTケロ🐸")
-                    self.poutput(ordered_output_buffers[h])
+                    for future in as_completed(futures):
+                        hostname = future_to_hostname.get(future, "UNKNOWN")
+                        try:
+                            result_failed_hostname = future.result()
+                            if result_failed_hostname:
+                                result_failed_hostname_list.append(result_failed_hostname)
+                        except Exception as e:
+                            # handle_execution で捕まえていない想定外の例外
+                            if not args.no_output:
+                                print_error(f"⚠️ 未処理の例外: {hostname}:{e}")
+                
+                # --orderedの場合は、ここで実行結果をまとめて表示する。
+                if ordered_output_enabled:
+                    for h in sorted(ordered_output_buffers.keys(), key=lambda x: (x is None, x or "")):
+                        print_info(f"NODE: {h} 📄OUTPUTケロ🐸")
+                        self.poutput(ordered_output_buffers[h])
 
-            # 結果をまとめて表示
-            if result_failed_hostname_list and not args.no_output:
-                print_warning(f"❎ 🐸なんかトラブルケロ: {', '.join(sorted(result_failed_hostname_list))}")
-            else:
-                if not args.no_output:
-                    print_success("✅ すべてのホストで実行完了ケロ🐸")
-            
-            return # via sshの処理を明示的に閉じる
+                # 結果をまとめて表示
+                if result_failed_hostname_list and not args.no_output:
+                    print_warning(f"❎ 🐸なんかトラブルケロ: {', '.join(sorted(result_failed_hostname_list))}")
+                else:
+                    if not args.no_output:
+                        print_success("✅ すべてのホストで実行完了ケロ🐸")
+                
+                return # via sshの処理を明示的に閉じる
         
         else:
             # consoleかつip,host,groupを使用しないパターン

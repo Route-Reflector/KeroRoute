@@ -68,39 +68,39 @@ connect_only_help = "コマンドを実行せず、接続確認だけ行うケ�
 ### PARSER_SECTION ###
 ######################
 # netmiko_console_parser = argparse.ArgumentParser(formatter_class=argparse.RawTextHelpFormatter)
-netmiko_console_parser = Cmd2ArgumentParser(formatter_class=RawTextRichHelpFormatter, description="[green]console コマンド🐸[/green]")
+# netmiko_console_parser = Cmd2ArgumentParser(formatter_class=RawTextRichHelpFormatter, description="[green]console コマンド🐸[/green]")
 # "-h" はhelpと競合するから使えない。
-netmiko_console_parser.add_argument("-s", "--serial", type=str, default="/dev/ttyUSB0", help=serial_help)
-netmiko_console_parser.add_argument("-b", "--baudrate", type=int, default=None, help=baudrate_help)
-netmiko_console_parser.add_argument("-u", "--username", type=str, default="", help=username_help)
-netmiko_console_parser.add_argument("-p", "--password", type=str, default="", help=password_help)
-netmiko_console_parser.add_argument("-d", "--device_type", type=str, default="", help=device_type_help, completer=device_types_completer)
-netmiko_console_parser.add_argument("-r", "--read_timeout", "--read-timeout", dest="read_timeout", type=int, default=60, help=read_timeout_help)
-netmiko_console_parser.add_argument("-l", "--log", action="store_true", help=log_help)
-netmiko_console_parser.add_argument("-m", "--memo", type=str, default="", help=memo_help)
-netmiko_console_parser.add_argument("-S", "--secret", type=str, default="", help=secret_help)
-netmiko_console_parser.add_argument("-o", "--ordered", action="store_true", help=ordered_help)
-netmiko_console_parser.add_argument("--parser", "--parse",dest="parser",  choices=["textfsm", "genie", "text-fsm"], help=parser_help)
-netmiko_console_parser.add_argument("--textfsm-template", type=str,  help=textfsm_template_help)
-netmiko_console_parser.add_argument("--force", action="store_true", help=force_help)
+# netmiko_console_parser.add_argument("-s", "--serial", type=str, default="/dev/ttyUSB0", help=serial_help)
+# netmiko_console_parser.add_argument("-b", "--baudrate", type=int, default=None, help=baudrate_help)
+# netmiko_console_parser.add_argument("-u", "--username", type=str, default="", help=username_help)
+# netmiko_console_parser.add_argument("-p", "--password", type=str, default="", help=password_help)
+# netmiko_console_parser.add_argument("-d", "--device_type", type=str, default="", help=device_type_help, completer=device_types_completer)
+# netmiko_console_parser.add_argument("-r", "--read_timeout", "--read-timeout", dest="read_timeout", type=int, default=60, help=read_timeout_help)
+# netmiko_console_parser.add_argument("-l", "--log", action="store_true", help=log_help)
+# netmiko_console_parser.add_argument("-m", "--memo", type=str, default="", help=memo_help)
+# netmiko_console_parser.add_argument("-S", "--secret", type=str, default="", help=secret_help)
+# netmiko_console_parser.add_argument("-o", "--ordered", action="store_true", help=ordered_help)
+# netmiko_console_parser.add_argument("--parser", "--parse",dest="parser",  choices=["textfsm", "genie", "text-fsm"], help=parser_help)
+# netmiko_console_parser.add_argument("--textfsm-template", type=str,  help=textfsm_template_help)
+# netmiko_console_parser.add_argument("--force", action="store_true", help=force_help)
 # netmiko_console_parser.add_argument("--post-reconnect-baudrate", type=int, help=post_reconnect_baudrate_help)
 
 
-# mutually exclusive
-target_node = netmiko_console_parser.add_mutually_exclusive_group(required=False)
-target_node.add_argument("--host", type=str, nargs="?", default=None, help=host_help, completer=host_names_completer)
-target_node.add_argument("--group", type=str, nargs="?", default=None, help=group_help, completer=group_names_completer)
+# # mutually exclusive
+# target_node = netmiko_console_parser.add_mutually_exclusive_group(required=False)
+# target_node.add_argument("--host", type=str, nargs="?", default=None, help=host_help, completer=host_names_completer)
+# target_node.add_argument("--group", type=str, nargs="?", default=None, help=group_help, completer=group_names_completer)
 
 # mutually exclusive
-target_command = netmiko_console_parser.add_mutually_exclusive_group(required=False)
-target_command.add_argument("-c", "--command", type=str, default="", help=command_help)
-target_command.add_argument("-L", "--commands-list", type=str, default="", help=command_list_help, completer=commands_list_names_completer)
+# target_command = netmiko_console_parser.add_mutually_exclusive_group(required=False)
+# target_command.add_argument("-c", "--command", type=str, default="", help=command_help)
+# target_command.add_argument("-L", "--commands-list", type=str, default="", help=command_list_help, completer=commands_list_names_completer)
 target_command.add_argument("--connect-only", action="store_true", help=connect_only_help)
 
-# mutually exclusive
-silence_group = netmiko_console_parser.add_mutually_exclusive_group(required=False)
-silence_group.add_argument("--quiet", action="store_true", help=quiet_help)
-silence_group.add_argument("--no-output", "--no_output", dest="no_output", action="store_true", help=no_output_help)
+# # mutually exclusive
+# silence_group = netmiko_console_parser.add_mutually_exclusive_group(required=False)
+# silence_group.add_argument("--quiet", action="store_true", help=quiet_help)
+# silence_group.add_argument("--no-output", "--no_output", dest="no_output", action="store_true", help=no_output_help)
 
 
 def _execute_console_command(connection, prompt, command, *, args, parser_kind, expect_string: str | None):
@@ -376,16 +376,16 @@ def do_console(self, args):
 
 
 
-    # ❶ シリアルポートのチェック
-    try:
-        serial_port = check_serial_port(args.serial)
-        if not args.no_output:
-            print_info(f"✅ 使用可能なポート: {serial_port}")
-    except ValueError as e:
-        if not args.no_output:
-            print_error(str(e))
-            print_warning(f"❌中断ケロ🐸")
-            return
+    # # ❶ シリアルポートのチェック
+    # try:
+    #     serial_port = check_serial_port(args.serial)
+    #     if not args.no_output:
+    #         print_info(f"✅ 使用可能なポート: {serial_port}")
+    # except ValueError as e:
+    #     if not args.no_output:
+    #         print_error(str(e))
+    #         print_warning(f"❌中断ケロ🐸")
+    #         return
 
     # ❸ inventoryの取得(--host or --group)
     inventory_data = None
