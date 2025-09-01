@@ -9,7 +9,7 @@ CAPABILITY_MAP: dict[str, dict[str, set[str]]]  = {
                 "textfsm-template", "force"},
         "console": {"via", "host", "group", "command", "commands-list", "connect-only", "quiet", "no-output", "serial",
                     "baudrate",  "username", "password", "secret", "device-type", "read-timeout", "log", "memo",
-                    "ordered", "parser", "textfsm-template", "force"},
+                    "workers", "ordered", "parser", "textfsm-template", "force"},
         "restconf": {"via"}
     },
 
@@ -20,7 +20,7 @@ CAPABILITY_MAP: dict[str, dict[str, set[str]]]  = {
         "telnet": {"via"},
         "console": {"via", "host", "group", "config-list", "connect-only", "quiet", "no-output", "serial",
                     "baudrate",  "username", "password", "secret", "device-type", "read-timeout", "log", "memo",
-                    "ordered", "parser", "textfsm-template", "force"},
+                    "workers", "ordered", "parser", "textfsm-template", "force"},
         "restconf": {"via"},
     },
 
