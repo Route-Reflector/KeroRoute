@@ -16,7 +16,7 @@ from netmiko_execution import handle_execution
 
 
 ######################
-###  HELP_SECTION  ### 
+###  HELP_SECTION  ###
 ######################
 # bright_yellow -> file_name or file_path
 ip_help = "対象デバイスのIPアドレスを指定します。"
@@ -27,43 +27,50 @@ command_help = "1つのコマンドを直接指定して実行します。"
 command_list_help = ("コマンドリスト名（[bright_yellow]commands-lists.yaml[/bright_yellow]に定義）を指定して実行します。\n" 
                     "device_typeはホストから自動で選択されます。")
 
-username_help = ("--ip 専用。SSH接続に使用するユーザー名を指定します。\n"
-                 "--host | --group 指定時は[bright_yellow]inventory.yaml[/bright_yellow]の値を使用します。\n")
-password_help = ("--ip 専用。SSH接続に使用するパスワードを指定します。\n"
-                 " --host | --group 指定時は[bright_yellow]inventory.yaml[/bright_yellow]の値を使用します。\n")
-device_type_help = "Netmikoにおけるデバイスタイプを指定します（例: cisco_ios）。省略時は 'cisco_ios' です。\n"
+username_help = ("SSH|TELNET|CONSOLE 接続に使用するユーザー名を指定します。\n"
+                 "--host | --group 指定時に --username オプションを使用すると[bright_yellow]inventory.yaml[/bright_yellow]の値に上書き使用します。\n")
+password_help = ("SSH|TELNET|CONSOLE 接続に使用するパスワードを指定します。\n"
+                 "--host | --group 指定時に --password オプションを使用すると[bright_yellow]inventory.yaml[/bright_yellow]の値に上書き使用します。\n")
+device_type_help = ("Netmikoにおけるデバイスタイプを指定します（例: cisco_ios）。省略時は 'cisco_ios' です。\n"
+                    "--via console | --via telnet指定時には自動的に'_serial','_telnet'を付与します。\n"
+                    "内部的に自動で処理されるため_serial, _telnetを `inventory.yaml` や `commands-lists.yaml` に付与する必要はありません。")
 port_help = "SSH接続に使用するポート番号を指定します（デフォルト: 22）\n"
 timeout_help = "SSH接続のタイムアウト秒数を指定します（デフォルト: 10秒）\n"
 log_help = ("実行結果をログファイルとして保存します。\n"
-            "保存先: logs/execute/\n"
+            "保存先: logs/[mode]/\n"
             "保存名: yearmmdd-hhmmss_[hostname]_[commands_or_commands_list]\n"
-            "[bright_yellow]example: 20250504-235734_R0_show-ip-int-brief.log\n[/bright_yellow]")
+            "[bright_yellow]example: 20250504-235734_R0_show-ip-int-brief.log[/bright_yellow]\n"
+            "[mode]には'execute, configure, console, telnet'等の値が入ります。")
 memo_help = ("ログファイル名に付加する任意のメモ（文字列）を指定します。\n"
-             "保存先: logs/execute/\n"
+             "保存先: logs/[mode]/\n"
              "保存名: yearmmdd-hhmmss_[hostname]_[commands_or_commands_list]_[memo]\n"
-             "[bright_yellow]example: 20250506-125600_R0_show-ip-int-brief_memo.log\n[/bright_yellow]")
+             "[bright_yellow]example: 20250506-125600_R0_show-ip-int-brief_memo.log[/bright_yellow]\n"
+             "[mode]には'execute, configure, console, telnet'等の値が入ります。")
 workers_help = ("並列実行するワーカースレッド数を指定します。\n"
                 "指定しない場合は [bright_yellow]sys_config.yaml[/bright_yellow] の [bright_yellow]executor.default_workers[/bright_yellow] を参照します。\n"
                 "そこにも設定が無いときは、グループ台数と 規定上限([bright_blue]DEFAULT_MAX_WORKERS[/bright_blue]) の小さい方が自動で採用されます。\n\n")
 secret_help = ("enable に入るための secret を指定します。(省略時は password を流用します。)\n"
-               "--ip 専用。--host | --group 指定時は [green]inventory.yaml[/green] の値を使用します。\n\n")
+               "--host | --group 指定時に --secret オプションを使用すると [bright_yellow]inventory.yaml[/bright_yellow] の値に上書き使用します。\n\n")
 quiet_help = ("画面上の出力（nodeのcommandの結果）を抑制します。進捗・エラーは表示されます。このオプションを使う場合は --log が必須です。")
 no_output_help = ("画面上の出力を完全に抑制します（進捗・エラーも表示しません）。 --log が未指定の場合のみエラー表示します。")
-ordered_help = ("--group指定時にoutputの順番を昇順に並べ変えます。 このoptionを使用しない場合は実行完了順に表示されます。--group 未指定の場合は実行を中止します。")
+ordered_help = ("--group指定時にoutputの順番を昇順に並べ変えます。 このoptionを使用しない場合は実行完了順に表示されます。"
+                "--group 未指定の場合に --ordered オプションを使用するとエラーになります。")
 parser_help = ("コマンドの結果をparseします。textfsmかgenieを指定します。")
 textfsm_template_help = ("--parser optionで textfsm を指定する際に template ファイルを渡すためのオプションです。\n"
                          "--parser optionで textfsm を指定する際は必須です。(genieのときは必要ありません。)")
 force_help = "device_type の不一致や未設定エラーを無視して強制実行するケロ🐸"
 via_help = ("executeコマンドを実行するprotocolを指定します。\n"
-            "[ssh telnet console restconf]から1つ選択します。指定しない場合はsshになります。🐸")
+            "[ssh | telnet | console | restconf]から1つ選択します。指定しない場合はsshになります。🐸")
 serial_help = ("使用するシリアルポートを指定します。\n"
                "example: console --serial /dev/ttyUSB0\n")
 baudrate_help = ("使用するbaudrateを指定します。\n"
                  "example: console --baudrate 9600")
 read_timeout_help = ("send_command の応答待ち時間（秒）。\n"
                      "重いコマンド（例: show tech）用に指定します。\n"
-                     "console --host R1 -c 'show tech' --read_timeout 1000"
+                     "console --host R1 -c 'show tech' --read_timeout 1000\n"
                      "default: 60 (seconds)")
+connect_only_help = "コマンドを実行せず、接続確認だけ行うケロ🐸（enable まで）"
+post_reconnect_baudrate_help = "実行後にこのボーレートで再接続確認だけ行うケロ🐸"
 
 
 ######################
@@ -92,6 +99,7 @@ netmiko_execute_parser.add_argument("--via", "-v", "--by", "-V",  dest="via",
 netmiko_execute_parser.add_argument("-S", "--serial", nargs="+", default=["/dev/ttyUSB0"], help=serial_help)
 netmiko_execute_parser.add_argument("-b", "--baudrate", type=int, default=None, help=baudrate_help)
 netmiko_execute_parser.add_argument("-r", "--read_timeout", "--read-timeout", dest="read_timeout", type=int, default=60, help=read_timeout_help)
+netmiko_execute_parser.add_argument("--post-reconnect-baudrate", type=int, help=post_reconnect_baudrate_help)
 
 
 # mutually exclusive
@@ -100,14 +108,15 @@ target_node.add_argument("-i", "--ip", type=str, nargs="?", default=None, help=i
 target_node.add_argument("--host", type=str, nargs="?", default=None, help=host_help, completer=host_names_completer)
 target_node.add_argument("--group", type=str, nargs="?", default=None, help=group_help, completer=group_names_completer)
 
-target_command = netmiko_execute_parser.add_mutually_exclusive_group(required=True)
+target_command = netmiko_execute_parser.add_mutually_exclusive_group(required=False)
 target_command.add_argument("-c", "--command", type=str, default="", help=command_help)
 target_command.add_argument("-L", "--commands-list", type=str, default="",
                             help=command_list_help, completer=commands_list_names_completer)
+target_command.add_argument("--connect-only", action="store_true", help=connect_only_help)
 
 silence_group = netmiko_execute_parser.add_mutually_exclusive_group(required=False)
 silence_group.add_argument("--quiet", action="store_true", help=quiet_help)
-silence_group.add_argument("--no-output", action="store_true", help=no_output_help)
+silence_group.add_argument("--no-output", "--no_output", dest="no_output", action="store_true", help=no_output_help)
 
 
 @cmd2.with_argparser(netmiko_execute_parser)
@@ -135,10 +144,20 @@ def do_execute(self, args):
     
     if via == "telnet" and args.port == 22:
         print_warning("via=telnet なのに --port 22 が指定されてるケロ🐸 通常は 23 だよ")
-    
+        return
+
     no_target = not (args.ip or args.host or args.group)
     if no_target and via != "console":
         print_error("ssh|telnetでは --ip か --host か --group の指定が必要ケロ🐸")
+        return
+
+    if not args.connect_only and not (args.command or args.commands_list):
+        print_error("コマンド未指定ケロ🐸（-c か -L か --connect-only のいずれかが必要）")
+        return
+    
+    if args.connect_only and args.post_reconnect_baudrate:
+        print_error("--connect-only と --post-reconnect-baudrate は同時に使えないケロ🐸")
+        return
 
     # Capability_Guard
     try:
@@ -231,14 +250,16 @@ def do_execute(self, args):
                 print_error(f"❎ 🐸なんかトラブルケロ@: {result_failed_hostname}")
             return
 
-        if args.host or args.group: 
-            try:
-                inventory_data = get_validated_inventory_data(host=args.host, group=args.group)
-            
-            except (FileNotFoundError, ValueError) as e:
-                if not args.no_output:
-                    print_error(str(e))
-                return
+        try:
+            if args.host:
+                inventory_data = get_validated_inventory_data(host=args.host)
+            elif args.group:
+                inventory_data = get_validated_inventory_data(group=args.group)    
+        except (FileNotFoundError, ValueError) as e:
+            if not args.no_output:
+                print_error(str(e))
+                print_warning(f"❌中断ケロ🐸")
+            return
         
         if args.host:
             if via == "console":

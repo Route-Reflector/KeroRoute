@@ -96,21 +96,21 @@ def _execute_commands_list(connection, prompt, exec_commands, args, parser_kind)
     """
     full_output_list = []
 
+    expect_string = rf"{re.escape(prompt)}\s*$"
+    read_timeout = getattr(args, "read_timeout", None)
+
+    # console専用の送信オプションだけまとめる
+    send_kwargs = {}
+    if getattr(args, "via", None) == "console":
+        send_kwargs["expect_string"] = expect_string
+        if read_timeout is not None:
+            send_kwargs["read_timeout"] = read_timeout
+
     # textfsmだけ先に一度だけ作る 
     if parser_kind == "textfsm":
         template = str(Path(args.textfsm_template))
 
     for command in exec_commands:
-        expect_string = rf"{re.escape(prompt)}\s*$"
-        read_timeout = getattr(args, "read_timeout", None)
-
-        # console専用の送信オプションだけまとめる
-        send_kwargs = {}
-        if getattr(args, "via", None) == "console":
-            send_kwargs["expect_string"] = expect_string
-        if read_timeout is not None:
-            send_kwargs["read_timeout"] = read_timeout
-
         if parser_kind:
             if parser_kind == "genie":
                 output = connection.send_command(command, use_genie=True, raise_parsing_error=True, **send_kwargs)
@@ -125,6 +125,14 @@ def _execute_commands_list(connection, prompt, exec_commands, args, parser_kind)
             output = connection.send_command(command, **send_kwargs)
             full_output = f"{prompt} {command}\n{output}\n"
             full_output_list.append(full_output)
+        
+        # via == consoleのときだけ各コマンド後に同期してバッファを吐かせる(安定化)
+        if getattr(args, "via", "") == "console":
+            try:
+                wait_for_prompt_returned(connection, sleep_time=SLEEP_TIME)
+            except Exception:
+                # 同期失敗は致命的ではないので握りつぶして次へ
+                pass
     
     if parser_kind == "genie":
         return full_output_list
@@ -166,6 +174,31 @@ def _execute_commands(connection, prompt, args, exec_commands, parser_kind: str 
         return _execute_commands_list(connection, prompt, exec_commands, args=args, parser_kind=parser_kind)
     else:
         raise ValueError("command または commands_list のいずれかが必要ケロ🐸")
+
+
+def reconnect_with_baudrate(device: dict, hostname: str, new_baudrate: int, *, args) -> str | None:
+    """
+    指定のボーレートで再接続確認だけ行う。
+    成功: None を返す（失敗なし）
+    失敗: 失敗した hostname を返す（呼び出し側の集計で使える）
+    """
+    device_re = dict(device) # 再接続用にコピーを作成 元のdeviceに影響を与えない。
+    serial_settings = dict(device_re.get("serial_settings", {}))
+    serial_settings["baudrate"] = int(new_baudrate)
+    device_re["serial_settings"] = serial_settings
+
+    try:
+        reconnect_connection, reconnect_prompt, reconnect_hostname = connect_to_device(
+            device_re, hostname, require_enable=True
+        )
+        safe_disconnect(reconnect_connection)
+        if not getattr(args, "no_output", False):
+            print_success(f"<NODE: {reconnect_hostname}> 🔁{new_baudrate}bps で再接続確認OKケロ🐸")
+        return None
+    except Exception as e:
+        if not getattr(args, "no_output", False):
+            print_error(f"<NODE: {hostname}> 🔁再接続失敗ケロ🐸: {e}")
+        return hostname
 
 
 def handle_execution(device: dict, args, poutput, hostname, *, output_buffers: dict | None = None,
@@ -224,6 +257,9 @@ def handle_execution(device: dict, args, poutput, hostname, *, output_buffers: d
                 return hostname # このホストはスキップ
 
     # ❸ 接続とプロンプト取得
+    connection = None 
+    require_enable = None
+
     try:
         connection, prompt, hostname = connect_to_device(device, hostname)
     except ConnectionError as e:
@@ -235,7 +271,14 @@ def handle_execution(device: dict, args, poutput, hostname, *, output_buffers: d
     
     if not args.no_output:
         print_success(f"<NODE: {hostname}> 🔗接続成功ケロ🐸")
-    
+
+    if getattr(args, "connect_only", False):
+        safe_disconnect(connection)
+        elapsed = perf_counter() - timer
+        if not args.no_output:
+            print_success(f"<NODE: {hostname}> 🔚接続確認だけ完了ケロ🐸 (elapsed: {elapsed:.2f}s)")
+        return None
+
     # CONSOLE対応
     if getattr(args, "via", None) == "console":
         # 画面残り対策prompt同期
@@ -279,10 +322,21 @@ def handle_execution(device: dict, args, poutput, hostname, *, output_buffers: d
     if getattr(args, "log", False):
         if not getattr(args, "no_output", False):
             print_info(f"<NODE: {hostname}> 💾ログ保存モードONケロ🐸🔛")
-        if parser_kind in ("genie", "textfsm") and isinstance(result_output_string, (list, dict)):
-            log_path = save_json(result_output_string, hostname, args, parser_kind=parser_kind, mode="execute")
+        
+        via = getattr(args, "via", "")
+        if via in ["ssh", "telnet", "console"]:
+            log_save_mode = via
+            if via == "ssh":
+                log_save_mode = "execute"
         else:
-            log_path = save_log(result_output_string, hostname, args)
+            print_error("ログ保存用のモードが決定できないケロ🐸")
+            return hostname
+
+        if parser_kind in ("genie", "textfsm") and isinstance(result_output_string, (list, dict)):
+            log_path = save_json(result_output_string, hostname, args, parser_kind=parser_kind, mode=log_save_mode)
+        else:
+            log_path = save_log(result_output_string, hostname, args, mode=log_save_mode)
+        
         if not getattr(args, "no_output", False):
             print_success(f"<NODE: {hostname}> 💾ログ保存完了ケロ🐸⏩⏩⏩ {log_path}")
 
