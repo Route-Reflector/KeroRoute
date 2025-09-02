@@ -23,6 +23,9 @@ venv
 logs/
 tmp/
 
+# KeroRoute Legacy Files
+console.py
+
 # KeroRoute project YAMLs (not for public)
 inventory.yaml
 commands-lists.yaml
