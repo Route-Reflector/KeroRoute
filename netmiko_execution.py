@@ -1,3 +1,4 @@
+import re
 from time import perf_counter
 from pathlib import Path
 import json
@@ -7,6 +8,14 @@ from message import print_info, print_success, print_warning, print_error
 from output_logging import save_log, save_json
 from load_and_validate_yaml import get_validated_commands_list, validate_device_type_for_list, get_commands_list_device_type
 from connect_device import connect_to_device, safe_disconnect
+from prompt_utils import wait_for_prompt_returned
+
+
+#######################
+###  CONST_SECTION  ### 
+#######################
+SLEEP_TIME = 1
+
 
 
 __all__ = ["handle_execution"]
@@ -35,17 +44,28 @@ def _execute_command(connection, prompt, command, args, parser_kind):
         parser_kind=None のときは "{prompt} {command}\\n{device_output}\\n" 形式のテキスト。
         parser_kind が指定されている場合は構造化データ（list/dict）。
     """
+    expect_string = rf"{re.escape(prompt)}\s*$"
+    read_timeout = getattr(args, "read_timeout", None)
+    
+    # console専用の送信オプションだけまとめる
+    send_kwargs = {}
+    if getattr(args, "via", None) == "console":
+        send_kwargs["expect_string"] = expect_string
+        if read_timeout is not None:
+            send_kwargs["read_timeout"] = read_timeout
+
     if parser_kind:
         if parser_kind == "genie":
-            output = connection.send_command(command, use_genie=True, raise_parsing_error=True)
+            output = connection.send_command(command, use_genie=True, raise_parsing_error=True, **send_kwargs)
             full_output = output
+        
         elif parser_kind == "textfsm":
             template = str(Path(args.textfsm_template))
             output = connection.send_command(command, use_textfsm=True, raise_parsing_error=True,
-                                             textfsm_template=template)
+                                             textfsm_template=template, **send_kwargs)
             full_output = output
     else:
-        output = connection.send_command(command)
+        output = connection.send_command(command, **send_kwargs)
         full_output = f"{prompt} {command}\n{output}\n"
 
     return full_output
@@ -81,18 +101,28 @@ def _execute_commands_list(connection, prompt, exec_commands, args, parser_kind)
         template = str(Path(args.textfsm_template))
 
     for command in exec_commands:
+        expect_string = rf"{re.escape(prompt)}\s*$"
+        read_timeout = getattr(args, "read_timeout", None)
+
+        # console専用の送信オプションだけまとめる
+        send_kwargs = {}
+        if getattr(args, "via", None) == "console":
+            send_kwargs["expect_string"] = expect_string
+        if read_timeout is not None:
+            send_kwargs["read_timeout"] = read_timeout
+
         if parser_kind:
             if parser_kind == "genie":
-                output = connection.send_command(command, use_genie=True, raise_parsing_error=True)
+                output = connection.send_command(command, use_genie=True, raise_parsing_error=True, **send_kwargs)
                 full_output = output
                 full_output_list.append(full_output)
             elif parser_kind == "textfsm":
                 output = connection.send_command(command, use_textfsm=True, raise_parsing_error=True,
-                                                 textfsm_template=template)
+                                                 textfsm_template=template, **send_kwargs)
                 full_output = output
                 full_output_list.append(full_output)
         else:
-            output = connection.send_command(command)
+            output = connection.send_command(command, **send_kwargs)
             full_output = f"{prompt} {command}\n{output}\n"
             full_output_list.append(full_output)
     
@@ -138,9 +168,6 @@ def _execute_commands(connection, prompt, args, exec_commands, parser_kind: str 
         raise ValueError("command または commands_list のいずれかが必要ケロ🐸")
 
 
-
-
-
 def handle_execution(device: dict, args, poutput, hostname, *, output_buffers: dict | None = None,
                      parser_kind: str | None = None, lock: Lock | None = None) -> str | None:
     """
@@ -176,11 +203,15 @@ def handle_execution(device: dict, args, poutput, hostname, *, output_buffers: d
         list_device_type = get_commands_list_device_type(args.commands_list)
         node_device_type = device.get("device_type")
 
+        re_suffix = re.compile(r"_(serial|telnet)$")
+        base_list_device_type = re_suffix.sub("", list_device_type or "")
+        base_node_device_type = re_suffix.sub("", node_device_type or "")
+
         try:
             validate_device_type_for_list(hostname=hostname,
-                                          node_device_type=node_device_type,
+                                          node_device_type=base_node_device_type,
                                           list_name=args.commands_list,
-                                          list_device_type=list_device_type)
+                                          list_device_type=base_list_device_type)
         except ValueError as e:
             if getattr(args, "force", False):
                 if not args.no_output:
@@ -204,6 +235,11 @@ def handle_execution(device: dict, args, poutput, hostname, *, output_buffers: d
     
     if not args.no_output:
         print_success(f"<NODE: {hostname}> 🔗接続成功ケロ🐸")
+    
+    # CONSOLE対応
+    if getattr(args, "via", None) == "console":
+        # 画面残り対策prompt同期
+        wait_for_prompt_returned(connection, sleep_time=SLEEP_TIME)
 
     # ❹ コマンド実行（単発 or リスト）
     try:
