@@ -227,16 +227,16 @@ def do_execute(self, args):
             if not args.no_output:
                 print_error(str(e))
                 print_warning(f"❌中断ケロ🐸")
-                return
+            return
     else:
         serial_port = None
 
     # ❷ inventory_data を先に初期化しておく (host/groupが無い経路用)
     inventory_data = None
     
-    ###################
-    ### ssh, telnet ###
-    ###################
+    #########################
+    ### command_execution ###
+    #########################
     if via in ("ssh", "telnet", "console"):
 
         if args.ip:
@@ -258,6 +258,9 @@ def do_execute(self, args):
         except (FileNotFoundError, ValueError) as e:
             if not args.no_output:
                 print_error(str(e))
+                # 👉 ssh/telnet で inventory の IP が空/不正なときは console を案内
+                if via in ("ssh", "telnet") and ("inventory の ip が" in str(e) or "--ip で指定した値が" in str(e)):
+                    print_info("👉 コンソール接続なら --via console を使ってね🐸")
                 print_warning(f"❌中断ケロ🐸")
             return
         
@@ -327,16 +330,22 @@ def do_execute(self, args):
                             print_warning("⛔ 中断ケロ🐸")
                             return
                     
-                    # 全体まとめ
-                    if result_failed_hostname_list and not args.no_output:
-                        print_warning(f"❎ 一部失敗ケロ: {', '.join(sorted(result_failed_hostname_list))}")
-                    else:
-                        if not args.no_output:
-                            print_success("🎉 すべてのバッチが完了したケロ🐸")
+                # 全体まとめ
+                if result_failed_hostname_list and not args.no_output:
+                    print_warning(f"❎ 一部失敗ケロ: {', '.join(sorted(result_failed_hostname_list))}")
+                else:
+                    if not args.no_output:
+                        print_success("🎉 すべてのバッチが完了したケロ🐸")
 
             else:
                 # via != consoleの場合
-                device_list, hostname_list = build_device_and_hostname(args, inventory_data)
+                try: 
+                    device_list, hostname_list = build_device_and_hostname(args, inventory_data)
+                except ValueError as e:
+                    if not args.no_output:
+                        print_error(str(e))
+                        print_warning("⛔ 中断ケロ🐸")
+                    return
 
                 max_workers = default_workers(len(device_list), args)
 

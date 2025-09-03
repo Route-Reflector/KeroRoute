@@ -120,10 +120,14 @@ def _build_device_from_host(args, inventory_data):
 
     ip = args.ip or node_info["ip"]
     if not is_valid_ip(ip):
+        hostname = node_info.get("hostname") or args.host
+        bad_ip = ip if ip else "EMPTY"
         if args.ip is not None:
-            raise ValueError(f"--ip で指定した値が [ipv4|ipv6] アドレスとして認識できないケロ🐸: {ip}")
+            raise ValueError(f"--ip で指定した値が [ipv4|ipv6] アドレスとして認識できないケロ🐸\n"
+                             f"<NODE: {args.host}>, <HOSTNAME: {hostname}>, <IP: {bad_ip}>")
         else:
-            raise ValueError(f"inventory の ip が [ipv4|ipv6] アドレスとして認識できないケロ🐸: {ip}")
+            raise ValueError(f"inventory の ip が [ipv4|ipv6] アドレスとして認識できないケロ🐸\n"
+                             f"<NODE: {args.host}>, <HOSTNAME: {hostname}>, <IP: {bad_ip}>")
 
     device_type = args.device_type or node_info["device_type"]
     if not device_type:
@@ -141,7 +145,7 @@ def _build_device_from_host(args, inventory_data):
         "timeout": timeout,
     }
 
-    hostname = node_info.get("hostname") or ip
+    hostname = node_info.get("hostname") or args.host
     return device, hostname 
 
 
@@ -171,10 +175,13 @@ def _build_device_from_group(args, inventory_data):
     
     for node in group_info:
         node_info = inventory_data["all"]["hosts"][node]
-        
+
         ip = node_info["ip"]
         if not is_valid_ip(ip):
-            raise ValueError(f"inventory の ip が [ipv4|ipv6] アドレスとして認識できないケロ🐸: {ip}")
+            hostname = node_info.get("hostname") or node
+            bad_ip = ip if ip else "EMPTY"
+            raise ValueError(f"inventory の ip が [ipv4|ipv6] アドレスとして認識できないケロ🐸\n"
+                             f"<NODE: {node}>, <HOSTNAME: {hostname}>, <IP: {bad_ip}>")
         
         device_type = args.device_type or node_info["device_type"]
         if not device_type:
@@ -250,11 +257,14 @@ def _build_device_for_telnet_from_host(args, inventory_data):
 
     ip = args.ip or node_info["ip"]
     if not is_valid_ip(ip):
+        hostname = node_info.get("hostname") or args.host
+        bad_ip = ip if ip else "EMPTY"
         if args.ip is not None:
-            raise ValueError(f"--ip で指定した値が [ipv4|ipv6] アドレスとして認識できないケロ🐸: {ip}")
+            raise ValueError(f"--ip で指定した値が [ipv4|ipv6] アドレスとして認識できないケロ🐸\n"
+                             f"<NODE: {args.host}>, <HOSTNAME: {hostname}>, <IP: {bad_ip}>")
         else:
-            raise ValueError(f"inventory の ip が [ipv4|ipv6] アドレスとして認識できないケロ🐸: {ip}")
-
+            raise ValueError(f"inventory の ip が [ipv4|ipv6] アドレスとして認識できないケロ🐸\n"
+                             f"<NODE: {args.host}>, <HOSTNAME: {hostname}>, <IP: {bad_ip}>")
 
     device = {
         # CLIがあれば優先、なければinventory
@@ -292,7 +302,10 @@ def _build_device_for_telnet_from_group(args, inventory_data):
 
         ip = node_info["ip"]
         if not is_valid_ip(ip):
-            raise ValueError(f"inventory の ip が [ipv4|ipv6] アドレスとして認識できないケロ🐸: {ip}")
+            hostname = node_info.get("hostname") or node
+            bad_ip = ip if ip else "EMPTY"
+            raise ValueError(f"inventory の ip が [ipv4|ipv6] アドレスとして認識できないケロ🐸\n"
+                             f"<NODE: {node}>, <HOSTNAME: {hostname}>, <IP: {bad_ip}>")
 
         device = {
             # CLIがあれば優先、なければinventory
