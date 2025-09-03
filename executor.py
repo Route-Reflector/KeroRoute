@@ -1,3 +1,4 @@
+from glob import glob
 from pathlib import Path
 import threading
 import cmd2
@@ -96,7 +97,7 @@ netmiko_execute_parser.add_argument("--textfsm-template", type=str,  help=textfs
 netmiko_execute_parser.add_argument("--force", action="store_true", help=force_help)
 netmiko_execute_parser.add_argument("--via", "-v", "--by", "-V",  dest="via", 
                                     choices=["ssh", "telnet", "console", "restconf"], default="ssh", help=via_help)
-netmiko_execute_parser.add_argument("-S", "--serial", nargs="+", default=["/dev/ttyUSB0"], help=serial_help)
+netmiko_execute_parser.add_argument("-S", "--serial", nargs="+", default=None, help=serial_help)
 netmiko_execute_parser.add_argument("-b", "--baudrate", type=int, default=None, help=baudrate_help)
 netmiko_execute_parser.add_argument("-r", "--read_timeout", "--read-timeout", dest="read_timeout", type=int, default=60, help=read_timeout_help)
 netmiko_execute_parser.add_argument("--post-reconnect-baudrate", type=int, help=post_reconnect_baudrate_help)
@@ -117,6 +118,23 @@ target_command.add_argument("--connect-only", action="store_true", help=connect_
 silence_group = netmiko_execute_parser.add_mutually_exclusive_group(required=False)
 silence_group.add_argument("--quiet", action="store_true", help=quiet_help)
 silence_group.add_argument("--no-output", "--no_output", dest="no_output", action="store_true", help=no_output_help)
+
+
+def _auto_discover_serial_ports():
+    """
+    /dev/ttyUSB* と /dev/ttyACM* を列挙して存在確認（権限含む）できた順に返す。
+    Netmiko の check_serial_port() で“実際に使えるパス”だけに絞る。
+    """
+    candidates = sorted(set(glob("/dev/ttyUSB*") + glob("/dev/ttyACM*")))
+    usable = []
+    for dev in candidates:
+        try:
+            real = check_serial_port(dev)  # 存在/権限/オープン確認
+            usable.append(real)
+        except ValueError:
+            # 権限NGやbusy等はスキップ
+            continue
+    return usable
 
 
 @cmd2.with_argparser(netmiko_execute_parser)
@@ -200,8 +218,20 @@ def do_execute(self, args):
     # ❶ シリアルポートのチェック
     if via == "console":
         try:
-            # args.serial は list になっている（nargs='+'）
-            serial_list = args.serial if isinstance(args.serial, list) else [args.serial]
+            # args.serial が None (未指定) の時は自動検出
+            if args.serial is None:
+                serial_list = _auto_discover_serial_ports()
+                if not serial_list:
+                    if not args.no_output:
+                        print_error("シリアルポート(/dev/ttyUSB* または /dev/ttyACM*))が見つからないケロ🐸")
+                        print_info("👉 ケーブル/権限/udev設定を確認するか、--serial で明示指定してケロ🐸")
+                    return
+                
+                if not args.no_output:
+                    print_info(f"🔎 自動検出したシリアル: {', '.join(serial_list)}")
+            else:
+                # ユーザ指定あり(nargs="+"なのでlistのはず)
+                serial_list = args.serial if isinstance(args.serial, list) else [args.serial]
  
             # print連打を避けるための簡易キャッシュ（複数ポート対応）
             if not hasattr(self, "_printed_serial_ports"):
@@ -223,6 +253,7 @@ def do_execute(self, args):
                 # 単発ターゲットなのに複数シリアル指定があれば親切に警告しておく
                 if not args.no_output and len(checked_ports) > 1:
                     print_warning("複数の --serial が指定されたけど単一ターゲットなので先頭の1本だけ使うケロ🐸")
+
         except ValueError as e:
             if not args.no_output:
                 print_error(str(e))
