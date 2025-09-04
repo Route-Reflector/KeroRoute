@@ -11,7 +11,8 @@ from message import print_info, print_success, print_warning, print_error
 from build_device import build_device_and_hostname
 from load_and_validate_yaml import get_validated_inventory_data
 from workers import default_workers
-from completers import host_names_completer, group_names_completer, device_types_completer, commands_list_names_completer
+from completers import (host_names_completer, group_names_completer, device_types_completer,
+                        commands_list_names_completer, serial_choices_provider)
 from capability_guard import guard_execute, CapabilityError
 from netmiko_execution import handle_execution
 
@@ -61,7 +62,7 @@ textfsm_template_help = ("--parser optionで textfsm を指定する際に templ
                          "--parser optionで textfsm を指定する際は必須です。(genieのときは必要ありません。)")
 force_help = "device_type の不一致や未設定エラーを無視して強制実行するケロ🐸"
 via_help = ("executeコマンドを実行するprotocolを指定します。\n"
-            "[ssh | telnet | console | restconf]から1つ選択します。指定しない場合はsshになります。🐸")
+            "[ssh | telnet | console]から1つ選択します。指定しない場合はsshになります。🐸")
 serial_help = ("使用するシリアルポートを指定します。\n"
                "example: console --serial /dev/ttyUSB0\n")
 baudrate_help = ("使用するbaudrateを指定します。\n"
@@ -97,7 +98,7 @@ netmiko_execute_parser.add_argument("--textfsm-template", type=str,  help=textfs
 netmiko_execute_parser.add_argument("--force", action="store_true", help=force_help)
 netmiko_execute_parser.add_argument("--via", "-v", "--by", "-V",  dest="via", 
                                     choices=["ssh", "telnet", "console", "restconf"], default="ssh", help=via_help)
-netmiko_execute_parser.add_argument("-S", "--serial", nargs="+", default=None, help=serial_help)
+netmiko_execute_parser.add_argument("-S", "--serial", nargs="+", default=None, help=serial_help, choices_provider=serial_choices_provider)
 netmiko_execute_parser.add_argument("-b", "--baudrate", type=int, default=None, help=baudrate_help)
 netmiko_execute_parser.add_argument("-r", "--read_timeout", "--read-timeout", dest="read_timeout", type=int, default=60, help=read_timeout_help)
 netmiko_execute_parser.add_argument("--post-reconnect-baudrate", type=int, help=post_reconnect_baudrate_help)

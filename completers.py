@@ -2,6 +2,7 @@ from ruamel.yaml import YAML
 from pathlib import Path
 from typing import List, Set
 import shlex
+import platform
 
 from load_and_validate_yaml import COMMANDS_LISTS_FILE, CONFIG_LISTS_FILE
 
@@ -212,3 +213,58 @@ def log_filename_completer(_self, text, line, begidx, endidx):
         
     return result
     # return list(reversed(result))
+
+
+def serial_choices_provider(_arg_tokens=None) -> List[str]:
+    """
+    choices_provider 用。
+    - pyserial があれば list_ports の結果を返す
+    - なければ OS ごとの代表的なパターンを glob して存在確認
+    - 最終的に候補が空なら OS ごとのフォールバックを返す
+    """
+    ports: List[str] = []
+
+    # ❶ pyserialがあればそれを使う
+    try:
+        from serial.tools import list_ports
+        for port in list_ports.comports():
+            if port and getattr(port, "device", None):
+                ports.add(str(port.device))
+    except Exception:
+        pass
+
+    # ❷ OSごとの代表的なパターンをglob
+    if not ports:
+        system = platform.system().lower()
+        patterns: List[str] = []
+
+        if system == "linux":
+            patterns = ["/dev/ttyUSB*", "/dev/ttyACM*", "/dev/ttyS*"]
+        elif system == "darwin":
+            patterns = ["/dev/tty.usbserial*", "/dev/tty.usbmodem*",
+                        "/dev/cu.usbserial*", "/dev/cu.usbmodem*"]
+        elif system == "windows":
+        # Windows は COM ポートを1〜256まで一括で候補に
+            patterns = [f"COM{i}" for i in range(1, 257)]
+        
+        if patterns and system != "windows":
+            for pattern in patterns:
+                for pat in Path("/dev").glob(pattern.split("/")[-1]):
+                    if pat.exists():
+                        ports.append(str(pat))
+        elif system == "windows":
+            ports.extend(patterns)
+    
+    # ③ まだ空ならフォールバック
+    if not ports:
+        system = platform.system().lower()
+        if system == "linux":
+            ports = ["/dev/ttyUSB0"]
+        elif system == "darwin":
+            ports = ["/dev/cu.usbserial", "/dev/cu.usbmodem"]
+        elif system == "windows":
+            ports = ["COM1"]
+        else:
+            ports = ["/dev/ttyUSB0"]
+
+    return sorted(set(ports))
