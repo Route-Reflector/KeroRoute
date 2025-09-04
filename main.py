@@ -3,7 +3,7 @@ from random import choice
 
 import ping
 import executor
-import console
+# import console
 import configure
 import secure_copy
 import show
@@ -60,7 +60,7 @@ class KeroRoute(cmd2.Cmd):
 
 KeroRoute.do_ping = ping.do_ping
 KeroRoute.do_execute = executor.do_execute
-KeroRoute.do_console = console.do_console
+# KeroRoute.do_console = console.do_console
 KeroRoute.do_configure = configure.do_configure
 KeroRoute.do_scp = secure_copy.do_scp
 KeroRoute.do_show = show.do_show

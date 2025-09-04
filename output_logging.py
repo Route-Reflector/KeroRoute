@@ -66,6 +66,7 @@ def save_log(result_output_string: str, hostname: str, args, mode: str = "execut
 
     if mode == "configure":
         log_base_name = sanitize_filename(getattr(args, "config_list", "CONFIG"))
+    
     elif mode == "scp":
         source = getattr(args, "src", "")
         scp_file_name = Path(source).name if source else "UNKNOWN"
@@ -75,18 +76,26 @@ def save_log(result_output_string: str, hostname: str, args, mode: str = "execut
             log_base_name = sanitize_filename(f"SCP_GET_{scp_file_name}")
         else:
             raise ValueError("SCPモードでは --put または --get のどちらかを指定する必要があるケロ🐸")
+    
     elif mode == "login":
         log_base_name = "LOGIN"
+    
     elif getattr(args, "command", ""):
         if mode == "console":
             log_base_name = sanitize_filename(f"{args.command}_by_console")
+        elif mode == "telnet":
+            log_base_name = sanitize_filename(f"{args.command}_by_telnet")
         else:
             log_base_name = sanitize_filename(args.command)
+    
     elif getattr(args, "commands_list", ""):
         if mode == "console":
             log_base_name = sanitize_filename(f"{args.commands_list}_by_console")
+        elif mode == "telnet":
+            log_base_name = sanitize_filename(f"{args.commands_list}_by_telnet")
         else:
             log_base_name = sanitize_filename(args.commands_list)
+
     else:
         if not getattr(args, "no_output", False):
             raise ValueError("args.command または args.commands_list のどちらかが必須ケロ！🐸")
@@ -184,11 +193,15 @@ def save_json(json_data: Any, hostname: str, args, *, parser_kind: str, mode: st
     elif getattr(args, "command", ""):
         if mode == "console":
             log_base_name = sanitize_filename(f"{args.command}_by_console")
+        elif mode == "telnet":
+            log_base_name = sanitize_filename(f"{args.command}_by_telnet")
         else:
             log_base_name = sanitize_filename(args.command)
     elif getattr(args, "commands_list", ""):
         if mode == "console":
             log_base_name = sanitize_filename(f"{args.commands_list}_by_console")
+        elif mode == "telnet":
+            log_base_name = sanitize_filename(f"{args.commands_list}_by_telnet")
         else:
             log_base_name = sanitize_filename(args.commands_list)
     else:

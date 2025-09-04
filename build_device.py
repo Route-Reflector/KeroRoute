@@ -1,5 +1,7 @@
 from utils import is_valid_ip
 
+from types import SimpleNamespace
+
 
 #####################
 ### CONST_SECTION ###
@@ -118,10 +120,14 @@ def _build_device_from_host(args, inventory_data):
 
     ip = args.ip or node_info["ip"]
     if not is_valid_ip(ip):
+        hostname = node_info.get("hostname") or args.host
+        bad_ip = ip if ip else "EMPTY"
         if args.ip is not None:
-            raise ValueError(f"--ip で指定した値が [ipv4|ipv6] アドレスとして認識できないケロ🐸: {ip}")
+            raise ValueError(f"--ip で指定した値が [ipv4|ipv6] アドレスとして認識できないケロ🐸\n"
+                             f"<NODE: {args.host}>, <HOSTNAME: {hostname}>, <IP: {bad_ip}>")
         else:
-            raise ValueError(f"inventory の ip が [ipv4|ipv6] アドレスとして認識できないケロ🐸: {ip}")
+            raise ValueError(f"inventory の ip が [ipv4|ipv6] アドレスとして認識できないケロ🐸\n"
+                             f"<NODE: {args.host}>, <HOSTNAME: {hostname}>, <IP: {bad_ip}>")
 
     device_type = args.device_type or node_info["device_type"]
     if not device_type:
@@ -139,7 +145,7 @@ def _build_device_from_host(args, inventory_data):
         "timeout": timeout,
     }
 
-    hostname = node_info.get("hostname") or ip
+    hostname = node_info.get("hostname") or args.host
     return device, hostname 
 
 
@@ -169,10 +175,13 @@ def _build_device_from_group(args, inventory_data):
     
     for node in group_info:
         node_info = inventory_data["all"]["hosts"][node]
-        
+
         ip = node_info["ip"]
         if not is_valid_ip(ip):
-            raise ValueError(f"inventory の ip が [ipv4|ipv6] アドレスとして認識できないケロ🐸: {ip}")
+            hostname = node_info.get("hostname") or node
+            bad_ip = ip if ip else "EMPTY"
+            raise ValueError(f"inventory の ip が [ipv4|ipv6] アドレスとして認識できないケロ🐸\n"
+                             f"<NODE: {node}>, <HOSTNAME: {hostname}>, <IP: {bad_ip}>")
         
         device_type = args.device_type or node_info["device_type"]
         if not device_type:
@@ -248,11 +257,14 @@ def _build_device_for_telnet_from_host(args, inventory_data):
 
     ip = args.ip or node_info["ip"]
     if not is_valid_ip(ip):
+        hostname = node_info.get("hostname") or args.host
+        bad_ip = ip if ip else "EMPTY"
         if args.ip is not None:
-            raise ValueError(f"--ip で指定した値が [ipv4|ipv6] アドレスとして認識できないケロ🐸: {ip}")
+            raise ValueError(f"--ip で指定した値が [ipv4|ipv6] アドレスとして認識できないケロ🐸\n"
+                             f"<NODE: {args.host}>, <HOSTNAME: {hostname}>, <IP: {bad_ip}>")
         else:
-            raise ValueError(f"inventory の ip が [ipv4|ipv6] アドレスとして認識できないケロ🐸: {ip}")
-
+            raise ValueError(f"inventory の ip が [ipv4|ipv6] アドレスとして認識できないケロ🐸\n"
+                             f"<NODE: {args.host}>, <HOSTNAME: {hostname}>, <IP: {bad_ip}>")
 
     device = {
         # CLIがあれば優先、なければinventory
@@ -290,7 +302,10 @@ def _build_device_for_telnet_from_group(args, inventory_data):
 
         ip = node_info["ip"]
         if not is_valid_ip(ip):
-            raise ValueError(f"inventory の ip が [ipv4|ipv6] アドレスとして認識できないケロ🐸: {ip}")
+            hostname = node_info.get("hostname") or node
+            bad_ip = ip if ip else "EMPTY"
+            raise ValueError(f"inventory の ip が [ipv4|ipv6] アドレスとして認識できないケロ🐸\n"
+                             f"<NODE: {node}>, <HOSTNAME: {hostname}>, <IP: {bad_ip}>")
 
         device = {
             # CLIがあれば優先、なければinventory
@@ -395,9 +410,41 @@ def _build_device_for_console_from_host(args, inventory_data, serial_port):
     return device, hostname
 
 
-def _build_device_for_console_from_group():
-    # NotImplemented
-    raise NotImplementedError
+def _build_device_for_console_from_group(args, inventory_data, serial_port_list):
+    """
+    console + group 用（multi-USB 最小実装）
+    デフォルトで serial_port_list の本数ごとの“バッチ”に分割して返す。
+      例) 10台 * 2本 → バッチ5個（各バッチ最大2台）
+    戻り値:
+      List[Tuple[List[device], List[hostname]]]
+    """
+    if not isinstance(serial_port_list, (list, tuple)) or not serial_port_list:
+        raise ValueError("serial_port_listが空ケロ🐸")
+    
+    groups_nodes = inventory_data["all"]["groups"][args.group]["hosts"]
+    num_serial_ports = len(serial_port_list)
+    batches: list[tuple[list[dict], list[str]]] = []
+
+    # バッチスライス
+    for start in range(0, len(groups_nodes), num_serial_ports):
+        chunk_nodes = groups_nodes[start: start + num_serial_ports]
+    
+        device_list: list[dict] = []
+        hostname_list: list[str] = []
+
+        # シリアルポートの順番 = ユーザーが差し替える“物理順"
+        for sp, node in zip(serial_port_list, chunk_nodes):
+            # hostパスを使うために args をクローン
+            sub_args = SimpleNamespace(**vars(args))
+            sub_args.host = node
+            sub_args.group = None  # hostパスでビルドさせる
+            device, hostname = _build_device_for_console_from_host(sub_args, inventory_data, sp)
+            device_list.append(device)
+            hostname_list.append(hostname)
+
+        batches.append((device_list, hostname_list))
+
+    return batches
 
 
 def build_device_and_hostname(args, inventory_data=None, serial_port=None):
@@ -436,7 +483,7 @@ def build_device_and_hostname(args, inventory_data=None, serial_port=None):
         if args.host:
             return _build_device_for_console_from_host(args, inventory_data, serial_port)
         elif args.group:
-            raise NotImplementedError
+            # ここはバッチの配列を返す
             return _build_device_for_console_from_group(args, inventory_data, serial_port)
         else:    
             return _build_device_for_console(args, serial_port)

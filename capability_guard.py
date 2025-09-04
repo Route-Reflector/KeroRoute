@@ -4,10 +4,12 @@ CAPABILITY_MAP: dict[str, dict[str, set[str]]]  = {
         "ssh": {"via", "ip", "host", "group", "command", "commands-list", "quiet", "no-output", "username", "password",
                 "secret", "device-type", "port", "timeout", "log", "memo", "workers", "ordered", "parser",
                 "textfsm-template", "force"},
-        "telnet":{"via"},
+        "telnet":{"via", "ip", "host", "group", "command", "commands-list", "quiet", "no-output", "username", "password",
+                "secret", "device-type", "port", "timeout", "log", "memo", "workers", "ordered", "parser",
+                "textfsm-template", "force"},
         "console": {"via", "host", "group", "command", "commands-list", "connect-only", "quiet", "no-output", "serial",
                     "baudrate",  "username", "password", "secret", "device-type", "read-timeout", "log", "memo",
-                    "ordered", "parser", "textfsm-template", "force"},
+                    "workers", "ordered", "parser", "textfsm-template", "force"},
         "restconf": {"via"}
     },
 
@@ -18,7 +20,7 @@ CAPABILITY_MAP: dict[str, dict[str, set[str]]]  = {
         "telnet": {"via"},
         "console": {"via", "host", "group", "config-list", "connect-only", "quiet", "no-output", "serial",
                     "baudrate",  "username", "password", "secret", "device-type", "read-timeout", "log", "memo",
-                    "ordered", "parser", "textfsm-template", "force"},
+                    "workers", "ordered", "parser", "textfsm-template", "force"},
         "restconf": {"via"},
     },
 
@@ -66,7 +68,9 @@ def collect_used_options_for_execute(args, via: str) -> list[str]:
 
     if getattr(args, "via", None):                   used.append("via")
 
-
+    ###########
+    ### ssh ###
+    ###########
     if via == "ssh":
         # target
         if getattr(args, "ip", None):                used.append("ip")
@@ -100,18 +104,87 @@ def collect_used_options_for_execute(args, via: str) -> list[str]:
         if getattr(args, "memo", None):              used.append("memo")
         if getattr(args, "force", False):            used.append("force")
 
-
+    ##############
+    ### telnet ###
+    ##############
     if via == "telnet":
-        pass
+        # target
+        if getattr(args, "ip", None):                used.append("ip")
+        if getattr(args, "host", None):              used.append("host")
+        if getattr(args, "group", None):             used.append("group")
 
+        # command options
+        if getattr(args, "command", None):           used.append("command")
+        if getattr(args, "commands_list", None):     used.append("commands_list")
+        
+        # silencer
+        if getattr(args, "quiet", False):            used.append("quiet")
+        if getattr(args, "no_output", False):        used.append("no_output")
+        
+        # parser
+        if getattr(args, "parser", None):            used.append("parser")
+        if getattr(args, "textfsm_template", None):  used.append("textfsm_template")
+        
+        # group_relative
+        if getattr(args, "workers", None):           used.append("workers")
+        if getattr(args, "ordered", False):          used.append("ordered")
+
+        # device_relative
+        if getattr(args, "username", None):          used.append("username")
+        if getattr(args, "password", None):          used.append("password")
+        if getattr(args, "secret", None):            used.append("secret")
+        if getattr(args, "device_type", None):       used.append("device_type")
+        if getattr(args, "port", None):              used.append("port")
+        if getattr(args, "timeout", None):           used.append("timeout")
+        if getattr(args, "log", False):              used.append("log")
+        if getattr(args, "memo", None):              used.append("memo")
+        if getattr(args, "force", False):            used.append("force")
+
+    ###############
+    ### console ###
+    ###############
     if via == "console":
-    # 将来 console を execute に取り込んだらここに追記
-    #     if getattr(args, "connect_only", False): used.append("connect_only")
-    #     if getattr(args, "serial", None):        used.append("serial")
-    #     if getattr(args, "baudrate", None):      used.append("baudrate")
-    #     if getattr(args, "read_timeout", None):  used.append("read_timeout")
-        pass
+        # target
+        if getattr(args, "ip", None):                used.append("ip")
+        if getattr(args, "host", None):              used.append("host")
+        if getattr(args, "group", None):             used.append("group")
 
+        # command options
+        if getattr(args, "command", None):           used.append("command")
+        if getattr(args, "commands_list", None):     used.append("commands_list")
+        
+        # silencer
+        if getattr(args, "quiet", False):            used.append("quiet")
+        if getattr(args, "no_output", False):        used.append("no_output")
+        
+        # parser
+        if getattr(args, "parser", None):            used.append("parser")
+        if getattr(args, "textfsm_template", None):  used.append("textfsm_template")
+        
+        # group_relative
+        if getattr(args, "workers", None):           used.append("workers")
+        if getattr(args, "ordered", False):          used.append("ordered")
+
+        # device_relative
+        if getattr(args, "username", None):          used.append("username")
+        if getattr(args, "password", None):          used.append("password")
+        if getattr(args, "secret", None):            used.append("secret")
+        if getattr(args, "device_type", None):       used.append("device_type")
+        if getattr(args, "port", None):              used.append("port")
+        if getattr(args, "timeout", None):           used.append("timeout")
+        if getattr(args, "log", False):              used.append("log")
+        if getattr(args, "memo", None):              used.append("memo")
+        if getattr(args, "force", False):            used.append("force")
+    
+        # console_relative
+        if getattr(args, "connect_only", False): used.append("connect_only")
+        if getattr(args, "serial", None):        used.append("serial")
+        if getattr(args, "baudrate", None):      used.append("baudrate")
+        if getattr(args, "read_timeout", None):  used.append("read_timeout")
+
+    ################
+    ### restconf ###
+    ################
     if via == "restconf":
         pass
 
