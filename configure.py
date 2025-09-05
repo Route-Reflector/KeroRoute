@@ -36,7 +36,15 @@ memo_help = ("ログファイル名に付加する任意のメモ（文字列）
 workers_help = ("並列実行するワーカースレッド数を指定します。\n"
                 "指定しない場合は sys_config.yaml の executor.default_workers を参照します。\n"
                 "そこにも設定が無いときは、グループ台数と 規定上限(DEFAULT_MAX_WORKERS) の小さい方が自動で採用されます。")
-
+secret_help = ("enable に入るための secret を指定します。(省略時は password を流用します。)\n"
+               "--host | --group 指定時に --secret オプションを使用すると [bright_yellow]inventory.yaml[/bright_yellow] の値に上書き使用します。\n\n")
+quiet_help = ("画面上の出力（nodeのcommandの結果）を抑制します。進捗・エラーは表示されます。このオプションを使う場合は --log が必須です。")
+no_output_help = ("画面上の出力を完全に抑制します（進捗・エラーも表示しません）。 --log が未指定の場合のみエラー表示します。")
+ordered_help = ("--group指定時にoutputの順番を昇順に並べ変えます。 このoptionを使用しない場合は実行完了順に表示されます。"
+                "--group 未指定の場合に --ordered オプションを使用するとエラーになります。")
+force_help = "device_type の不一致や未設定エラーを無視して強制実行するケロ🐸"
+via_help = ("executeコマンドを実行するprotocolを指定します。\n"
+            "[ssh | telnet | console]から1つ選択します。指定しない場合はsshになります。🐸")
 
 ######################
 ### PARSER_SECTION ###
@@ -46,14 +54,19 @@ netmiko_configure_parser = Cmd2ArgumentParser(formatter_class=RawTextRichHelpFor
 netmiko_configure_parser.add_argument("-u", "--username", type=str, default="", help=username_help)
 netmiko_configure_parser.add_argument("-p", "--password", type=str, default="", help=password_help)
 netmiko_configure_parser.add_argument("-d", "--device_type", type=str, default="cisco_ios", help=device_type_help, completer=device_types_completer)
-netmiko_configure_parser.add_argument("-P", "--port", type=int, default=22, help=port_help)
-netmiko_configure_parser.add_argument("-t", "--timeout", type=int, default=10, help=timeout_help)
+netmiko_configure_parser.add_argument("-P", "--port", type=int, default=None, help=port_help)
+netmiko_configure_parser.add_argument("-t", "--timeout", type=int, default=None, help=timeout_help)
 netmiko_configure_parser.add_argument("-l", "--log", action="store_true", help=log_help)
 netmiko_configure_parser.add_argument("-m", "--memo", type=str, default="", help=memo_help)
 netmiko_configure_parser.add_argument("-w", "--workers", type=int, default=None, metavar="N", help=workers_help)
+netmiko_configure_parser.add_argument("-s", "--secret", type=str, default="", help=secret_help)
+netmiko_configure_parser.add_argument("-o", "--ordered", action="store_true", help=ordered_help)
+netmiko_configure_parser.add_argument("--force", action="store_true", help=force_help)
+netmiko_configure_parser.add_argument("--via", "-v", "--by", "-V",  dest="via", 
+                                    choices=["ssh", "telnet", "console", "restconf"], default="ssh", help=via_help)
 
 # mutually exclusive
-target_node = netmiko_configure_parser.add_mutually_exclusive_group(required=True)
+target_node = netmiko_configure_parser.add_mutually_exclusive_group(required=False)
 target_node.add_argument("-i", "--ip", type=str, nargs="?", default=None, help=ip_help)
 target_node.add_argument("--host", type=str, nargs="?", default=None, help=host_help, completer=host_names_completer)
 target_node.add_argument("--group", type=str, nargs="?", default=None, help=group_help, completer=group_names_completer)
@@ -61,6 +74,9 @@ target_node.add_argument("--group", type=str, nargs="?", default=None, help=grou
 target_command = netmiko_configure_parser.add_mutually_exclusive_group(required=True)
 target_command.add_argument("-L", "--config-list", type=str, default="", help=command_list_help, completer=config_list_names_completer)
 
+silence_group = netmiko_configure_parser.add_mutually_exclusive_group(required=False)
+silence_group.add_argument("--quiet", action="store_true", help=quiet_help)
+silence_group.add_argument("--no-output", "--no_output", dest="no_output", action="store_true", help=no_output_help)
 
 def apply_config_list(connection, hostname, args):
     """
@@ -207,13 +223,53 @@ def do_configure(self, args):
     - 接続|enable 失敗、設定投入失敗は `_handle_configure()` 内で捕捉・表示
     - グループ実行時は失敗ノードを集計して最後に要約表示する🐸
     """
-    # Capabilityチェック
+    # via を確認し、未実装は即終了（UX優先）
+    via = getattr(args, "via", "ssh") # ssh, telnet, console, restconfのいずれか 指定なしの場合はssh
+    if via in ["restconf", "telnet", "console"]:
+        print_error(f"via {via}はまだ実装されてないケロ🐸")
+        return
+    
+    if via == "telnet" and args.port == 22:
+        print_warning("via=telnet なのに --port 22 が指定されてるケロ🐸 通常は 23 だよ")
+        return
+
+    no_target = not (args.ip or args.host or args.group)
+    if no_target and via != "console":
+        print_error("ssh|telnetでは --ip か --host か --group の指定が必要ケロ🐸")
+        return
+
+    # connect_onlyは出てこないため、
+
+    # if not args.connect_only and not (args.command or args.commands_list):
+    #     print_error("コマンド未指定ケロ🐸（-c か -L か --connect-only のいずれかが必要）")
+    #     return
+    
+    # if args.connect_only and args.post_reconnect_baudrate:
+    #     print_error("--connect-only と --post-reconnect-baudrate は同時に使えないケロ🐸")
+    #     return
+
+    # Capability_Guard executorと差分あり。
     try:
         guard_configure(args)  # ← 不許可オプションがあればここで止める
     except CapabilityError as e:
         print_error(str(e))
         return
 
+    # Capability_Guard
+    if args.ordered and not args.group:
+        print_error("--ordered は --group 指定時のみ使用できるケロ🐸")
+        return
+
+    if args.quiet and not args.log:
+        print_error("--quietオプションを使用するには--logが必要ケロ🐸")
+        return
+    
+    elif args.no_output and not args.log:
+        print_error("--no-outputオプションを使用するには--logが必要ケロ🐸 (画面出力ゼロだと結果が消えるよ)")
+        return
+
+    # Parser_Guard: configureでは未使用
+    # parser_kind = None
 
     if args.ip:
         device, hostname = build_device_and_hostname(args)
